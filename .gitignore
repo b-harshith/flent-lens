@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info
+.env
+
+# Virtual environment
+venv/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+
+# Pipeline outputs (large files, regenerated on run)
+output/
+
+# Dashboard — session temp files (auto-deleted, never commit)
+dashboard/.session_overrides.json
+dashboard/snapshots/
+
+# Data (source data is private, not for public repos)
+data/raw/
+data/processed/
