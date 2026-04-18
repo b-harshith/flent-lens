@@ -79,7 +79,7 @@ CITY_PROFILES = {
 # ═══════════════════════════════════════════════════════════════════
 # ACTIVE CITY  — change this single line to switch the pipeline
 # ═══════════════════════════════════════════════════════════════════
-ACTIVE_CITY = "hyderabad"
+ACTIVE_CITY = "bangalore"
 
 
 def get_profile():
