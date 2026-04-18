@@ -281,7 +281,7 @@ def run_pipeline():
 
     paths = []
     paths.append(exporter.export_investment_atlas_kml(ward_df, wards_gdf, listings_gdf))
-    paths.append(exporter.export_lens_report_xlsx(ward_df, stage_df, ols_model))
+    paths.append(exporter.export_lens_report_xlsx(ward_df, stage_df, ols_model, morans_result))
     paths.append(exporter.export_geojson(ward_df, wards_gdf))
     paths.append(exporter.export_3bhk_quartile_xlsx(quartile_df, ward_name_map))
 

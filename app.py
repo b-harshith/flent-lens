@@ -284,6 +284,36 @@ st.markdown("""
         background: #f0f4f8 !important;
     }
 
+    /* ── Chips ────────────────────────────────────────────────── */
+    .chip-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0;
+    }
+    .chip {
+        display: flex;
+        align-items: center;
+        background: #f1f3f5;
+        border: 1px solid #e1e4e8;
+        border-radius: 100px;
+        overflow: hidden;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .chip-label {
+        background: #1b2838;
+        color: #ffffff;
+        padding: 4px 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.65rem;
+    }
+    .chip-value {
+        padding: 4px 12px;
+        color: #1b2838;
+    }
+
     /* ── Hide UI chrome ───────────────────────────────────────── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -379,6 +409,9 @@ def _i(r, k):
 def inr(v): return f"₹{v:,.0f}" if v else "—"
 def inrk(v): return f"₹{v/1000:.0f}k" if v > 0 else "—"
 def tc(t): return {'Tier 1': '#0b7a3e', 'Tier 2': '#e67700', 'Tier 3': '#c92a2a'}.get(t, '#868e96')
+def render_chip(label, value):
+    return f"""<div class="chip"><div class="chip-label">{label}</div><div class="chip-value">{value}</div></div>"""
+
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -773,21 +806,29 @@ with tab3:
     with st.container(border=True):
         st.markdown('<h3>1. Structural OLS Regression</h3>', unsafe_allow_html=True)
         
+        st.latex(r"Cost_{3BHK} = \alpha + \beta \cdot Rent_{1BHK} + \epsilon")
+
         col_txt, col_img = st.columns([2, 3], gap="large")
         with col_txt:
             st.markdown("""
             **Purpose:** Tests whether 3BHK acquisition costs are structurally decoupled from 1BHK retail rents.
-            
-            A low R² and sub-1.0 β coefficient confirm **market fragmentation** — large assets do not track
-            small-room pricing linearly. This mathematically proves that Flent's room-splitting model exploits
-            a real pricing inefficiency.
             """)
             
+            st.markdown('<div class="chip-container">', unsafe_allow_html=True)
+            st.markdown(render_chip("Input (x)", "Median 1BHK Rent"), unsafe_allow_html=True)
+            st.markdown(render_chip("Target (y)", "Q25 3BHK Cost"), unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
             if ols:
                 st.markdown("---")
-                st.markdown(f"**R² (Fit Quality):** `{ols.get('R² (Fit Quality)','—')}`")
-                st.markdown(f"**β (Cost Multiplier):** `{ols.get('1BHK Cost Multiplier (β)','—')}`")
-                st.markdown(f"**Thesis Verdict:** `{ols.get('Arbitrage Thesis','—')}`")
+                st.markdown('<div class="chip-container">', unsafe_allow_html=True)
+                st.markdown(render_chip("R² Fit", ols.get('R² (Fit Quality)', '—')), unsafe_allow_html=True)
+                st.markdown(render_chip("Beta (β)", ols.get('1BHK Cost Multiplier (β)', '—')), unsafe_allow_html=True)
+                st.markdown(render_chip("Verdict", ols.get('Arbitrage Thesis', '—')), unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                beta_val = ols.get('1BHK Cost Multiplier (β)', '0').replace('x', '')
+                st.info(f"**Interpretation:** A Beta of **{beta_val}** means that for every ₹1 increase in 1BHK rent, 3BHK costs only rise by ₹{beta_val}. This sub-1.0 coefficient confirms **market fragmentation**.")
             else:
                 st.info("Validation metrics pending rerun.")
 
@@ -797,22 +838,39 @@ with tab3:
             else:
                 st.info("Visualization pending rerun.")
 
+
     st.write("") # Spacer
 
     # 2. Moran Panel
     with st.container(border=True):
         st.markdown('<h3>2. Moran\'s I — Spatial Autocorrelation</h3>', unsafe_allow_html=True)
         
+        st.latex(r"I = \frac{n}{W} \frac{\sum_{i}\sum_{j} w_{ij}(z_i - \bar{z})(z_j - \bar{z})}{\sum_{i} (z_i - \bar{z})^2}")
+
         col_txt2, col_img2 = st.columns([2, 3], gap="large")
         with col_txt2:
             st.markdown("""
             **Purpose:** Tests if rents cluster geographically to validate the spatial spillover rules.
+            """)
             
+            st.markdown('<div class="chip-container">', unsafe_allow_html=True)
+            st.markdown(render_chip("Geometry", prof['geo_unit_label']), unsafe_allow_html=True)
+            st.markdown(render_chip("Weights", "Queen Contiguity"), unsafe_allow_html=True)
+            st.markdown(render_chip("Variable", "1BHK Rent"), unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            if ols and "Moran's I Index" in ols:
+                st.markdown("---")
+                st.markdown('<div class="chip-container">', unsafe_allow_html=True)
+                st.markdown(render_chip("Moran's I", ols.get("Moran's I Index", "—")), unsafe_allow_html=True)
+                st.markdown(render_chip("p-value", ols.get("p-value", "—")), unsafe_allow_html=True)
+                st.markdown(render_chip("Result", ols.get("Clustered?", "—")), unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown("""
             - **HH Quadrant:** Premium clusters.
             - **LL Quadrant:** Affordable pockets.
-            - **LH Quadrant:** **Arbitrage Sweet Spots.** Low 1BHK rent zones surrounded by high-rent pressure.
-            
-            A significant positive Moran's I confirms the market has a real, spatially dependent structure.
+            - **LH/HL Quadrant:** **Arbitrage Sweet Spots.** Low-rent zones surrounded by high-rent pressure.
             """)
         
         with col_img2:
@@ -820,6 +878,7 @@ with tab3:
                 st.image(P['moran'], caption="Moran Scatter Plot: Spatial Clustering", use_container_width=True)
             else:
                 st.info("Visualization pending rerun.")
+
 
 
 # ─────────── TAB 4 ───────────────────────────────────────────────

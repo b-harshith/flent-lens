@@ -482,7 +482,7 @@ def export_investment_atlas_kml(df, wards_gdf, listings_gdf,
 # ═══════════════════════════════════════════════════════════════════
 # CONSOLIDATED 4-SHEET EXCEL REPORT
 # ═══════════════════════════════════════════════════════════════════
-def export_lens_report_xlsx(df, stage_df, ols_model=None,
+def export_lens_report_xlsx(df, stage_df, ols_model=None, morans_result=None,
                               filename='flent_lens_report.xlsx'):
     with log_process("Building Flent Lens Excel Report (4 sheets)"):
         try:
@@ -794,7 +794,23 @@ def export_lens_report_xlsx(df, stage_df, ols_model=None,
                 ws4.row_dimensions[row].height = 52
                 row += 1
         else:
-            ws4.cell(row=2, column=1, value="OLS model not available — re-run pipeline.")
+            ws4.cell(row=row, column=1, value="OLS model not available — re-run pipeline.")
+            row += 2
+
+        # ── Moran's I Spatial Autocorrelation ──
+        section(ws4, row, "🛰️ Moran's I Spatial Autocorrelation", '2e86de')
+        row += 1
+        if morans_result:
+            mi = morans_result.get('moran_i', 0)
+            pv = morans_result.get('p_value', 1.0)
+            cl = "YES (Clustered)" if morans_result.get('clustered') else "NO (Random)"
+            
+            label_val(ws4, row, "Moran's I Index", mi, '2e86de'); row += 1
+            label_val(ws4, row, "p-value", pv, '2e86de'); row += 1
+            label_val(ws4, row, "Clustered?", cl, '2e86de'); row += 1
+        else:
+            ws4.cell(row=row, column=1, value="Moran's I result not available.")
+            row += 1
 
         wb.save(path)
         print_success(f"Excel Report → [highlight]{os.path.basename(path)}[/] (4 sheets)")
