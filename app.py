@@ -469,6 +469,10 @@ def load_ols(path):
     except Exception:
         return {}
 
+def inr(val):
+    if val is None or pd.isna(val): return "₹0"
+    return f"₹{int(val):,}"
+
 # ═══════════════════════════════════════════════════════════════════
 # CHART HELPERS
 # ═══════════════════════════════════════════════════════════════════
