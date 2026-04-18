@@ -7,7 +7,11 @@ City selection is controlled by ACTIVE_CITY in city_config.py.
 """
 import os
 import sys
+import warnings
 from datetime import datetime
+
+# Silencing unavoidable shapely/geopandas warnings during O(N*M) proximity matching
+warnings.filterwarnings('ignore', category=RuntimeWarning, message='invalid value encountered in distance')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)

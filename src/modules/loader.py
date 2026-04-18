@@ -66,7 +66,8 @@ def load_kml(path: str, layer: int = 0) -> gpd.GeoDataFrame:
         layers = fiona.listlayers(path)
         gdf = gpd.read_file(path, driver='KML', layer=layers[layer])
         gdf = gdf.to_crs(config.CRS_GEOGRAPHIC)
-        gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna()].reset_index(drop=True)
+        # Filter out empty OR invalid geometries
+        gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna() & gdf.geometry.is_valid].reset_index(drop=True)
         return gdf
     except Exception as e:
         print_error(f"Could not load KML at {path}. Error: {e}")

@@ -46,22 +46,35 @@ def assign_listings_to_wards(listings_gdf: gpd.GeoDataFrame, wards_gdf: gpd.GeoD
             unmapped_proj = unmapped_gdf.to_crs(config.CRS_PROJECTED)
             wards_proj = wards_gdf[['ward_id', 'geometry']].to_crs(config.CRS_PROJECTED)
 
+            # Ensure wards_proj has no invalid or empty geometries (redundant but safe)
+            wards_proj = wards_proj[~wards_proj.geometry.is_empty & wards_proj.geometry.notna() & wards_proj.geometry.is_valid]
+
             # For each unmapped listing, find nearest ward boundary
             nearest_ward_ids = []
             nearest_dists = []
 
             for idx, listing_point in unmapped_proj.geometry.items():
+                if listing_point is None or listing_point.is_empty:
+                    nearest_ward_ids.append(None)
+                    nearest_dists.append(np.inf)
+                    continue
+
                 # Compute distance from this point to every ward polygon boundary
                 distances = wards_proj.geometry.distance(listing_point)
-                min_idx = distances.idxmin()
-                min_dist = distances[min_idx]
-
-                if min_dist <= config.NEAREST_WARD_MAX_DISTANCE_M:
-                    nearest_ward_ids.append(wards_proj.loc[min_idx, 'ward_id'])
-                    nearest_dists.append(min_dist)
-                else:
+                
+                if distances.isna().all():
                     nearest_ward_ids.append(None)
-                    nearest_dists.append(min_dist)
+                    nearest_dists.append(np.inf)
+                else:
+                    min_idx = distances.idxmin()
+                    min_dist = distances[min_idx]
+
+                    if min_dist <= config.NEAREST_WARD_MAX_DISTANCE_M:
+                        nearest_ward_ids.append(wards_proj.loc[min_idx, 'ward_id'])
+                        nearest_dists.append(min_dist)
+                    else:
+                        nearest_ward_ids.append(None)
+                        nearest_dists.append(min_dist)
 
             # Assign nearest ward IDs back
             proximity_series = pd.Series(nearest_ward_ids, index=unmapped_gdf.index)

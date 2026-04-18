@@ -1,21 +1,24 @@
 """
-Flent Lens — Interactive Analytics Dashboard
-A premium Streamlit UI for exploring multi-city real estate arbitrage insights.
+Flent Lens — Market Intelligence Dashboard
+Professional analytical dashboard for leadership review.
 """
 import streamlit as st
 import pandas as pd
 import json
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import os
 import subprocess
 import sys
 import re
 import numpy as np
+import warnings
+
+# Silencing unavoidable shapely/geopandas warnings during O(N*M) proximity matching
+warnings.filterwarnings('ignore', category=RuntimeWarning, message='invalid value encountered in distance')
 
 # ═══════════════════════════════════════════════════════════════════
-# PAGE CONFIG & THEME
+# PAGE CONFIG
 # ═══════════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Flent Lens — Market Intelligence",
@@ -31,286 +34,449 @@ if BASE_DIR not in sys.path:
 import city_config
 
 # ═══════════════════════════════════════════════════════════════════
-# PREMIUM CSS INJECTION
+# STYLE
 # ═══════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* Global */
+    /* ── Base ────────────────────────────────────────────────── */
     html, body, .stApp {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background: #fafbfc;
+        color: #212529;
     }
-    .stApp {
-        background: linear-gradient(135deg, #0a0a0f 0%, #111827 50%, #0f172a 100%);
-    }
-    .stApp > header { background: transparent; }
 
-    /* Sidebar */
+    /* ── Sidebar ─────────────────────────────────────────────── */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #111827 0%, #1e1b4b 100%);
-        border-right: 1px solid rgba(99, 102, 241, 0.15);
+        background: #1b2838;
     }
-    section[data-testid="stSidebar"] .stMarkdown p,
-    section[data-testid="stSidebar"] .stMarkdown li,
-    section[data-testid="stSidebar"] label {
-        color: #c7d2fe !important;
+    section[data-testid="stSidebar"] * {
+        color: #c8d6e5 !important;
     }
     section[data-testid="stSidebar"] h1,
     section[data-testid="stSidebar"] h2,
     section[data-testid="stSidebar"] h3 {
-        color: #e0e7ff !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    section[data-testid="stSidebar"] .stButton > button {
+        background: #2e86de;
+        color: #ffffff;
+        border: none;
+        font-weight: 600;
     }
 
-    /* Main content overrides */
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 { color: #e0e7ff; }
-    .stMarkdown p, .stMarkdown li { color: #94a3b8; }
+    /* ── Typography ──────────────────────────────────────────── */
+    .stMarkdown h1 {
+        color: #1b2838;
+        font-weight: 800;
+        font-size: 1.8rem;
+        letter-spacing: -0.02em;
+    }
+    .stMarkdown h2 {
+        color: #1b2838;
+        font-weight: 700;
+        font-size: 1.35rem;
+        margin-top: 1rem;
+    }
+    .stMarkdown h3 {
+        color: #2c3e50;
+        font-weight: 700;
+        font-size: 1.05rem;
+    }
+    .stMarkdown p, .stMarkdown li {
+        color: #495057;
+        font-size: 0.92rem;
+        line-height: 1.75;
+    }
 
-    /* Metric Cards */
+    /* ── Metric Cards ────────────────────────────────────────── */
     div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.06));
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        border-radius: 16px;
-        padding: 20px 24px;
-        backdrop-filter: blur(12px);
-        transition: all 0.3s ease;
+        background: #ffffff;
+        border: 1px solid #e1e4e8;
+        border-top: 3px solid #2e86de;
+        border-radius: 6px;
+        padding: 1.25rem 1.5rem !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     div[data-testid="stMetric"]:hover {
-        border-color: rgba(99, 102, 241, 0.5);
-        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.15);
         transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     div[data-testid="stMetric"] label {
-        color: #818cf8 !important;
-        font-weight: 600;
-        font-size: 0.75rem;
+        color: #6c757d !important;
+        font-size: 0.72rem !important;
+        font-weight: 600 !important;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
+        white-space: normal !important;
+        overflow: visible !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        color: #f1f5f9 !important;
-        font-weight: 700;
-    }
-    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-        color: #34d399 !important;
+        color: #1b2838 !important;
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
     }
 
-    /* Tabs */
+    /* ── Tabs ─────────────────────────────────────────────────── */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-        background: rgba(30, 27, 75, 0.5);
-        border-radius: 12px;
-        padding: 4px;
-        border: 1px solid rgba(99, 102, 241, 0.15);
+        gap: 0;
+        border-bottom: 2px solid #e1e4e8;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        color: #94a3b8;
-        font-weight: 500;
-        padding: 8px 20px;
+        color: #6c757d;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -2px;
     }
     .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-        color: #ffffff !important;
+        color: #1b2838 !important;
+        border-bottom-color: #2e86de !important;
+        background: transparent !important;
+    }
+
+    /* ── Chart explanation ────────────────────────────────────── */
+    .explain {
+        background: #f0f4f8;
+        border-left: 3px solid #2e86de;
+        padding: 14px 18px;
+        margin: 12px 0 16px 0;
+        font-size: 0.88rem;
+        color: #495057;
+        line-height: 1.65;
+    }
+    .explain b { color: #1b2838; }
+
+    /* ── Divider ──────────────────────────────────────────────── */
+    .divider {
+        border: 0;
+        height: 1px;
+        background: #e1e4e8;
+        margin: 2.5rem 0;
+    }
+
+    /* ── Tutorial Step ────────────────────────────────────────── */
+    .tour-step {
+        background: #1b2838;
+        border-radius: 8px;
+        padding: 24px 28px;
+        margin-bottom: 1.5rem;
+        color: #ffffff;
+    }
+    .tour-step .tour-num {
+        display: inline-block;
+        background: #2e86de;
+        color: #ffffff;
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 28px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        margin-right: 10px;
+    }
+    .tour-step .tour-title {
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 1rem;
+        display: inline;
+    }
+    .tour-step .tour-desc {
+        color: #c8d6e5;
+        font-size: 0.88rem;
+        line-height: 1.6;
+        margin-top: 10px;
+    }
+
+    /* ── Tab guide bar ────────────────────────────────────────── */
+    .tab-guide {
+        background: linear-gradient(135deg, #edf2ff 0%, #f0f4f8 100%);
+        border: 1px solid #d0d7de;
+        border-radius: 8px;
+        padding: 16px 24px;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        flex-wrap: wrap;
+    }
+    .tab-guide .tg-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .tab-guide .tg-num {
+        background: #2e86de;
+        color: #fff;
+        width: 22px; height: 22px;
+        border-radius: 50%;
+        text-align: center;
+        line-height: 22px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .tab-guide .tg-label {
+        font-size: 0.8rem;
+        color: #495057;
         font-weight: 600;
     }
 
-    /* Dataframe styling */
-    .stDataFrame { border-radius: 12px; overflow: hidden; }
-
-    /* Custom card class */
-    .insight-card {
-        background: linear-gradient(135deg, rgba(30, 27, 75, 0.6), rgba(17, 24, 39, 0.8));
-        border: 1px solid rgba(99, 102, 241, 0.15);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 16px;
-        backdrop-filter: blur(12px);
-    }
-    .insight-card h4 {
-        color: #c7d2fe;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 12px;
-        font-weight: 700;
-    }
-    .insight-card .value {
-        color: #f1f5f9;
-        font-size: 2rem;
-        font-weight: 800;
-        line-height: 1.1;
-    }
-    .insight-card .subtitle {
-        color: #64748b;
-        font-size: 0.8rem;
-        margin-top: 6px;
-    }
-
-    /* Hero Header */
-    .hero-header {
-        background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(124, 58, 237, 0.08));
-        border: 1px solid rgba(99, 102, 241, 0.2);
-        border-radius: 20px;
-        padding: 32px 40px;
-        margin-bottom: 32px;
-        position: relative;
-        overflow: hidden;
-    }
-    .hero-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        right: -20%;
-        width: 400px;
-        height: 400px;
-        background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%);
-        pointer-events: none;
-    }
-    .hero-header h1 {
-        background: linear-gradient(135deg, #818cf8, #c084fc, #f472b6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 2.2rem;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-        margin-bottom: 4px;
-    }
-    .hero-header .tagline {
-        color: #94a3b8;
-        font-size: 1rem;
-        font-weight: 400;
-    }
-
-    /* Tier badges */
-    .tier-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 0.7rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-    .tier-1 { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .tier-2 { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-    .tier-3 { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-    .tier-ex { background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.3); }
-
-    /* Section separator */
-    .section-sep {
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
-        margin: 40px 0;
-    }
-
-    /* OLS explanation grid */
-    .ols-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
+    /* ── OLS Grid ─────────────────────────────────────────────── */
+    .ols-row {
+        display: flex;
+        flex-wrap: wrap;
         gap: 16px;
-        margin-top: 16px;
+        margin: 16px 0;
     }
-    .ols-item {
-        background: rgba(30, 27, 75, 0.4);
-        border: 1px solid rgba(99, 102, 241, 0.12);
-        border-radius: 12px;
-        padding: 16px 20px;
+    .ols-box {
+        flex: 1 1 260px;
+        background: #ffffff;
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        padding: 20px;
     }
-    .ols-item .ols-label {
-        color: #818cf8;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        margin-bottom: 6px;
-    }
-    .ols-item .ols-val {
-        color: #f1f5f9;
-        font-size: 1.3rem;
-        font-weight: 800;
-    }
-    .ols-item .ols-desc {
-        color: #64748b;
-        font-size: 0.78rem;
-        margin-top: 8px;
-        line-height: 1.5;
+    .ols-box .olbl { font-size: 0.7rem; font-weight: 700; color: #6c757d; text-transform: uppercase; letter-spacing: 0.04em; }
+    .ols-box .oval { font-size: 1.15rem; font-weight: 800; color: #1b2838; margin: 6px 0; }
+    .ols-box .odsc { font-size: 0.82rem; color: #6c757d; line-height: 1.55; }
+
+    /* ── Native Component Styling ───────────────────────────── */
+    /* Adds border/shadow to all DataFrames & Tables */
+    div[data-testid="stDataFrame"], div[data-testid="stTable"] {
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        background: #ffffff;
+        padding: 1px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
 
-    /* Hide default Streamlit branding */
+    /* ── Buttons ──────────────────────────────────────────────── */
+    .stButton > button {
+        border-radius: 4px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    /* Primary buttons (Next, Done, Run Pipeline) */
+    .stButton > button[kind="primary"] {
+        background: #1b2838 !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #2e86de !important;
+        box-shadow: 0 4px 12px rgba(46, 134, 222, 0.3);
+    }
+    /* Secondary/Default buttons (Next when not primary, Skip) */
+    .stButton > button[kind="secondary"] {
+        background: #ffffff !important;
+        color: #1b2838 !important;
+        border: 1px solid #d0d7de !important;
+    }
+    .stButton > button[kind="secondary"]:hover {
+        border-color: #2e86de !important;
+        color: #2e86de !important;
+        background: #f0f4f8 !important;
+    }
+
+    /* ── Hide UI chrome ───────────────────────────────────────── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header[data-testid="stHeader"] {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
-# DATA LOADING HELPERS
+# DATA HELPERS
 # ═══════════════════════════════════════════════════════════════════
 @st.cache_data
 def load_geojson(path):
     with open(path, 'r') as f:
         geojson = json.load(f)
-    features = geojson.get('features', [])
     records = []
-    for i, feat in enumerate(features):
+    for i, feat in enumerate(geojson.get('features', [])):
         props = feat.get('properties', {})
         fid = str(props.get('ward_id', i))
-        if 'id' not in feat:
-            feat['id'] = fid
-        else:
-            feat['id'] = str(feat['id'])
-        props['_feature_id'] = feat['id']
+        feat['id'] = fid
+        props['_fid'] = fid
         records.append(props)
     df = pd.DataFrame(records)
-    # Clean numeric columns
-    for col in df.columns:
-        if col not in ['_feature_id', 'ward_name_x', 'ward_name_y', 'zone_name_x',
-                        'zone_name_y', 'closest_sezs', 'aura_sources', 'tier', 'data_sparse']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    skip = {'_fid', 'ward_name_x', 'ward_name_y', 'zone_name_x',
+            'zone_name_y', 'closest_sezs', 'aura_sources', 'tier', 'data_sparse'}
+    for c in df.columns:
+        if c not in skip:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
     return geojson, df
 
-
 @st.cache_data
-def load_excel_report(path):
+def load_xlsx(path):
     xl = pd.ExcelFile(path)
-    sheets = {}
-    for name in xl.sheet_names:
-        sheets[name] = pd.read_excel(xl, sheet_name=name)
-    return sheets
-
+    return {n: pd.read_excel(xl, sheet_name=n) for n in xl.sheet_names}
 
 @st.cache_data
-def load_ols_evidence(path):
+def load_ols(path):
     try:
         df = pd.read_excel(path, sheet_name='📐 OLS Evidence')
-        col_a = df.columns[0]
-        col_b = df.columns[1]
-        data = {}
-        for _, row in df.iterrows():
-            key = str(row[col_a]).strip() if pd.notna(row[col_a]) else ''
-            val = str(row[col_b]).strip() if pd.notna(row[col_b]) else ''
-            if key:
-                data[key] = val
-        return data
+        return {str(r[df.columns[0]]).strip(): str(r[df.columns[1]]).strip()
+                for _, r in df.iterrows() if pd.notna(r[df.columns[0]])}
     except Exception:
         return {}
 
+# ═══════════════════════════════════════════════════════════════════
+# CHART HELPERS
+# ═══════════════════════════════════════════════════════════════════
+DARK_NAVY = "#1b2838"
+LIGHT_GRAY = "#f1f3f5"
+BLUE_PRIMARY = "#2e86de"
 
-def get_city_outputs(city_key):
-    """Return all output paths for a given city."""
-    profile = city_config.CITY_PROFILES[city_key]
-    out_dir = os.path.join(BASE_DIR, profile['output_dir'])
-    return {
-        'geojson': os.path.join(out_dir, 'ward_analysis.geojson'),
-        'report': os.path.join(out_dir, 'flent_lens_report.xlsx'),
-        'quartiles': os.path.join(out_dir, '3bhk_supply_price_quartiles.xlsx'),
-        'moran': os.path.join(out_dir, 'moran_scatterplot_avg_rent_1bhk.png'),
-        'ols_plot': os.path.join(out_dir, 'ols_arbitrage_validation.png'),
-        'output_dir': out_dir,
-        'profile': profile,
-    }
+HIGH_CONTRAST_LAYOUT = {
+    "font": {"family": "Inter", "color": DARK_NAVY},
+    "paper_bgcolor": "#ffffff",
+    "plot_bgcolor": "#ffffff",
+    "xaxis": {
+        "gridcolor": LIGHT_GRAY,
+        "linecolor": DARK_NAVY,
+        "tickfont": {"size": 11, "color": DARK_NAVY},
+        "title": {"font": {"size": 12, "color": DARK_NAVY}}
+    },
+    "yaxis": {
+        "gridcolor": LIGHT_GRAY,
+        "linecolor": DARK_NAVY,
+        "tickfont": {"size": 11, "color": DARK_NAVY},
+        "title": {"font": {"size": 12, "color": DARK_NAVY}}
+    },
+    "margin": {"l": 50, "r": 20, "t": 40, "b": 50}
+}
+
+def style_chart(fig):
+    fig.update_layout(**HIGH_CONTRAST_LAYOUT)
+    return fig
+
+
+def paths_for(ck):
+    p = city_config.CITY_PROFILES[ck]
+    d = os.path.join(BASE_DIR, p['output_dir'])
+    return {k: os.path.join(d, v) for k, v in {
+        'geojson': 'ward_analysis.geojson', 'report': 'flent_lens_report.xlsx',
+        'quartiles': '3bhk_supply_price_quartiles.xlsx',
+        'moran': 'moran_scatterplot_avg_rent_1bhk.png',
+        'ols_img': 'ols_arbitrage_validation.png',
+    }.items()} | {'dir': d, 'profile': p}
+
+def _f(r, k):
+    v = r.get(k, 0)
+    return float(v) if pd.notna(v) and v is not None else 0.0
+
+def _i(r, k):
+    v = r.get(k, 0)
+    return int(float(v)) if pd.notna(v) and v is not None else 0
+
+def inr(v): return f"₹{v:,.0f}" if v else "—"
+def inrk(v): return f"₹{v/1000:.0f}k" if v > 0 else "—"
+def tc(t): return {'Tier 1': '#0b7a3e', 'Tier 2': '#e67700', 'Tier 3': '#c92a2a'}.get(t, '#868e96')
+
+
+# ═══════════════════════════════════════════════════════════════════
+# WARD CARD — uses st.columns + st.markdown for reliable rendering
+# ═══════════════════════════════════════════════════════════════════
+def render_ward_card(col, row, rank, has_transit, has_sez):
+    """Render a ward snapshot card inside a given st.column."""
+    name = str(row.get('ward_name', row.get('ward_id', '—')))
+    tier = row.get('tier', 'Excluded')
+    score = _f(row, 'OPP_SCORE')
+    margin = _f(row, 'arb_margin_best')
+    rent1 = _f(row, 'avg_rent_1bhk')
+    rent3 = _f(row, 'avg_rent_3bhk')
+    dd = _f(row, 'demand_discount') * 100
+    demand = _f(row, 'demand_intensity_idx')
+    supply = _i(row, 'cnt_3bhk') + _i(row, 'cnt_4bhk')
+    q1r, q1c = _f(row, 'q1_avg_rent'), _i(row, 'q1_count')
+    q2r, q2c = _f(row, 'q2_avg_rent'), _i(row, 'q2_count')
+    q3r, q3c = _f(row, 'q3_avg_rent'), _i(row, 'q3_count')
+    q4r, q4c = _f(row, 'q4_avg_rent'), _i(row, 'q4_count')
+    transit = _f(row, 'transit_score')
+    sez = _f(row, 'sez_employment_score')
+    aura = _f(row, 'aura_multiplier')
+    aura = aura if aura > 0 else 1.0
+    d_lbl = "High" if demand >= 0.5 else ("Mod" if demand >= 0.35 else "Low")
+    d_pct = min(demand * 100, 100)
+
+    with col:
+        # Header via HTML table (tables render reliably in Streamlit)
+        st.markdown(f"""
+<table style="width:100%;border-collapse:collapse;background:#1b2838;border-radius:6px 6px 0 0;overflow:hidden;">
+<tr>
+<td style="padding:16px 18px;">
+  <div style="color:#868e96;font-size:0.7rem;font-weight:600;">#{rank}</div>
+  <div style="color:#ffffff;font-size:1.05rem;font-weight:700;margin:2px 0 6px 0;">{name}</div>
+  <span style="background:{tc(tier)};color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:700;text-transform:uppercase;">{tier}</span>
+</td>
+<td style="padding:16px 18px;text-align:right;vertical-align:top;">
+  <div style="color:{tc(tier)};font-size:1.6rem;font-weight:800;line-height:1;">{score:.1f}</div>
+  <div style="color:#868e96;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;">Score</div>
+</td>
+</tr>
+</table>
+""", unsafe_allow_html=True)
+
+        # Body — structured as clean HTML tables (Streamlit-safe)
+        body = f"""
+<table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e1e4e8;border-top:0;border-radius:0 0 6px 6px;font-family:'Inter',sans-serif;">
+<!-- Core Arbitrage -->
+<tr><td colspan="2" style="padding:12px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Core Arbitrage</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Avg Arb Margin</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#0b7a3e;">{inr(margin)}/mo</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">1BHK Retail Rent</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{inr(rent1)}/mo</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">3BHK Acq Cost</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{inr(rent3)}/mo</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Demand Discount</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#2e86de;">{dd:.0f}%</td></tr>
+<!-- Supply Depth -->
+<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Supply · {supply} units</td></tr>
+<tr><td colspan="2" style="padding:8px 18px;">
+  <table style="width:100%;border-collapse:collapse;text-align:center;border:1px solid #e1e4e8;border-radius:4px;">
+    <tr style="background:#f8f9fa;">
+      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q1</td>
+      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q2</td>
+      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q3</td>
+      <td style="padding:4px;font-size:0.7rem;font-weight:700;color:#6c757d;">Q4</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q1r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q1c}u</span></td>
+      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q2r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q2c}u</span></td>
+      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q3r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q3c}u</span></td>
+      <td style="padding:6px 2px;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q4r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q4c}u</span></td>
+    </tr>
+  </table>
+</td></tr>
+<!-- Market -->
+<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Market Signals</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Demand Index</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{demand:.2f} <span style="color:#868e96;font-weight:500;">({d_lbl})</span></td></tr>
+<tr><td colspan="2" style="padding:0 18px 8px 18px;">
+  <div style="width:100%;height:5px;background:#e9ecef;border-radius:3px;"><div style="width:{d_pct}%;height:5px;background:#e67700;border-radius:3px;"></div></div>
+</td></tr>"""
+
+        if has_transit:
+            t_pct = min(transit * 100, 100)
+            body += f"""
+<tr><td style="padding:4px 18px;font-size:0.85rem;color:#495057;">Transit Score</td><td style="padding:4px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{transit:.2f}</td></tr>
+<tr><td colspan="2" style="padding:0 18px 8px 18px;">
+  <div style="width:100%;height:5px;background:#e9ecef;border-radius:3px;"><div style="width:{t_pct}%;height:5px;background:#2e86de;border-radius:3px;"></div></div>
+</td></tr>"""
+
+        if has_sez and sez > 0:
+            body += f"""<tr><td style="padding:4px 18px;font-size:0.85rem;color:#495057;">SEZ Gravity</td><td style="padding:4px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{sez:.2f}</td></tr>"""
+
+        if aura != 1.0:
+            a_str = f"+{(aura-1)*100:.0f}%" if aura > 1 else f"−{(1-aura)*100:.0f}%"
+            body += f"""
+<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Spatial Spillover</td></tr>
+<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Aura Effect</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#2e86de;">{a_str}</td></tr>"""
+
+        body += "</table>"
+        st.markdown(body, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -318,667 +484,365 @@ def get_city_outputs(city_key):
 # ═══════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### 🔬 Flent Lens")
-    st.caption("Real Estate Arbitrage Intelligence Platform")
+    st.caption("Market Intelligence Platform")
     st.markdown("---")
 
-    city_options = list(city_config.CITY_PROFILES.keys())
-    city_labels = [city_config.CITY_PROFILES[c]['city_name'] for c in city_options]
-    selected_idx = st.selectbox(
-        "🏙️ Select City",
-        range(len(city_options)),
-        format_func=lambda i: city_labels[i],
-        index=0,
-    )
-    selected_city = city_options[selected_idx]
-    profile = city_config.CITY_PROFILES[selected_city]
+    ckeys = list(city_config.CITY_PROFILES.keys())
+    cnames = [city_config.CITY_PROFILES[c]['city_name'] for c in ckeys]
+    si = st.selectbox("City", range(len(ckeys)), format_func=lambda i: cnames[i])
+    sel = ckeys[si]
+    prof = city_config.CITY_PROFILES[sel]
 
     st.markdown("---")
-    st.markdown("##### ⚙️ Pipeline Control")
+    if st.button("🔄 Restart Tutorial", use_container_width=True):
+        st.session_state.tour_step = 0
+        st.session_state.tour_done = False
+        st.rerun()
 
-    if st.button("🚀 Execute Pipeline", use_container_width=True, type="primary"):
-        config_path = os.path.join(BASE_DIR, "city_config.py")
-        with open(config_path, "r") as f:
-            content = f.read()
-        new_content = re.sub(
-            r'^ACTIVE_CITY\s*=\s*["\'].*?["\']',
-            f'ACTIVE_CITY = "{selected_city}"',
-            content,
-            flags=re.MULTILINE
-        )
-        with open(config_path, "w") as f:
-            f.write(new_content)
-
-        with st.status(f"Running pipeline for {profile['city_name']}...", expanded=True) as status:
-            process = subprocess.Popen(
-                [sys.executable, "main.py"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=BASE_DIR
-            )
-            log_area = st.empty()
-            logs = []
-            for line in process.stdout:
-                cleaned = line.strip()
-                if cleaned:
-                    logs.append(cleaned)
-                    if len(logs) > 30:
-                        logs.pop(0)
-                    log_area.code("\n".join(logs), language="shell")
-
-            process.wait()
-            if process.returncode == 0:
-                status.update(label="✅ Pipeline completed!", state="complete")
-                st.success("Done! Reloading dashboard...")
-                st.rerun()
+    st.markdown("---")
+    if st.button("🚀 Run Pipeline", use_container_width=True, type="primary"):
+        cfp = os.path.join(BASE_DIR, "city_config.py")
+        with open(cfp, "r") as f: txt = f.read()
+        txt = re.sub(r'^ACTIVE_CITY\s*=\s*["\'].*?["\']', f'ACTIVE_CITY = "{sel}"', txt, flags=re.MULTILINE)
+        with open(cfp, "w") as f: f.write(txt)
+        with st.status(f"Processing {prof['city_name']}…", expanded=True) as sts:
+            proc = subprocess.Popen([sys.executable, "main.py"], stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, cwd=BASE_DIR)
+            box = st.empty()
+            lines = []
+            for ln in proc.stdout:
+                ln = ln.strip()
+                if ln:
+                    lines.append(ln)
+                    if len(lines) > 20: lines.pop(0)
+                    box.code("\n".join(lines), language="text")
+            proc.wait()
+            if proc.returncode == 0:
+                sts.update(label="✅ Done", state="complete"); st.rerun()
             else:
-                status.update(label="❌ Pipeline failed", state="error")
-                st.error("Check logs above.")
+                sts.update(label="❌ Failed", state="error")
 
     st.markdown("---")
-    st.markdown("##### 📋 City Profile")
-    st.markdown(f"**Geo Unit:** {profile['geo_unit_label']}")
-    st.markdown(f"**CRS:** {profile['crs_projected']}")
-    st.markdown(f"**Transit Data:** {'✅' if profile['has_transit'] else '❌'}")
-    st.markdown(f"**SEZ Data:** {'✅' if profile['has_sez'] else '❌'}")
+    st.markdown(f"**Unit** · {prof['geo_unit_label']}")
+    st.markdown(f"**Transit** · {'✅' if prof['has_transit'] else '—'}")
+    st.markdown(f"**SEZ** · {'✅' if prof['has_sez'] else '—'}")
 
 
 # ═══════════════════════════════════════════════════════════════════
-# MAIN CONTENT — Load Data
+# LOAD
 # ═══════════════════════════════════════════════════════════════════
-paths = get_city_outputs(selected_city)
-
-if not os.path.exists(paths['geojson']):
-    st.markdown("""
-    <div class="hero-header">
-        <h1>Flent Lens</h1>
-        <div class="tagline">No analytical output found for this city. Use the sidebar to run the pipeline first.</div>
-    </div>
-    """, unsafe_allow_html=True)
+P = paths_for(sel)
+if not os.path.exists(P['geojson']):
+    st.info(f"No output for {prof['city_name']}. Click **Run Pipeline** in the sidebar.")
     st.stop()
 
-raw_geojson, df = load_geojson(paths['geojson'])
-
-# Ensure clean ward_name column
+raw_geo, df = load_geojson(P['geojson'])
 if 'ward_name' not in df.columns:
-    if 'ward_name_x' in df.columns:
-        df['ward_name'] = df['ward_name_x']
-    elif 'ward_name_y' in df.columns:
-        df['ward_name'] = df['ward_name_y']
-    else:
-        df['ward_name'] = df['ward_id'].astype(str)
-
-# Load supplementary data
-report_sheets = load_excel_report(paths['report']) if os.path.exists(paths['report']) else {}
-ols_data = load_ols_evidence(paths['report']) if os.path.exists(paths['report']) else {}
-
-city_name = profile['city_name']
-geo_label = profile['geo_unit_label']
+    df['ward_name'] = df.get('ward_name_x', df.get('ward_name_y', df['ward_id'].astype(str)))
+sheets = load_xlsx(P['report']) if os.path.exists(P['report']) else {}
+ols = load_ols(P['report']) if os.path.exists(P['report']) else {}
 
 
 # ═══════════════════════════════════════════════════════════════════
-# HERO HEADER
+# TUTORIAL SYSTEM
+# ═══════════════════════════════════════════════════════════════════
+TOUR_STEPS = [
+    {
+        "title": "Welcome to Flent Lens",
+        "desc": "This dashboard visualises the output of our rental arbitrage analysis pipeline. "
+                "It identifies geographic zones where Flent can lease large 3BHK apartments, split them "
+                "into premium co-living rooms, and earn the margin between acquisition cost and per-room revenue. "
+                "Let's walk you through what you're looking at.",
+    },
+    {
+        "title": "Executive KPIs — The Big Picture",
+        "desc": "The five cards below show headline metrics: total zones evaluated, how many are Tier 1 "
+                "(highest conviction), how many are commercially viable, the peak arbitrage margin found, "
+                "and the mean opportunity score across the city.",
+    },
+    {
+        "title": "Priority Investment Targets — Top 3 Cards",
+        "desc": "These cards mirror the Google Earth KML atlas popups. Each card shows one zone's "
+                "full economic profile: arbitrage margin, 1BHK retail rent, 3BHK acquisition cost, "
+                "supply quartile breakdown (Q1 is Flent's target tier), and market signals like demand "
+                "intensity and transit connectivity.",
+    },
+    {
+        "title": "Deep-Dive Tabs — Below the Cards",
+        "desc": "Scroll down to find four analytical tabs: "
+                "(1) Opportunity Atlas — an interactive map, "
+                "(2) Economic Analysis — margin vs rent scatter plot, "
+                "(3) Statistical Validation — OLS regression and Moran's I proof, "
+                "(4) Data Export — browse and download the raw Excel report.",
+    },
+    {
+        "title": "Switching Cities & Re-running",
+        "desc": "Use the sidebar on the left to switch between Bangalore and Hyderabad. "
+                "You can also re-execute the pipeline directly from the dashboard — the results "
+                "will refresh automatically. Enjoy exploring!",
+    },
+]
+
+if 'tour_step' not in st.session_state:
+    st.session_state.tour_step = 0
+if 'tour_done' not in st.session_state:
+    st.session_state.tour_done = False
+
+if not st.session_state.tour_done:
+    step = st.session_state.tour_step
+    s = TOUR_STEPS[step]
+    st.markdown(f"""
+    <div class="tour-step">
+        <span class="tour-num">{step + 1}</span>
+        <div class="tour-title">{s['title']}</div>
+        <div class="tour-desc">{s['desc']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    bcol1, bcol2, bcol3 = st.columns([1, 1, 6])
+    with bcol1:
+        if step < len(TOUR_STEPS) - 1:
+            if st.button("Next →", key="tour_next", use_container_width=True, type="primary"):
+                st.session_state.tour_step += 1
+                st.rerun()
+        else:
+            if st.button("✓ Done", key="tour_finish", use_container_width=True, type="primary"):
+                st.session_state.tour_done = True
+                st.rerun()
+    with bcol2:
+        if st.button("Skip tour", key="tour_skip", use_container_width=True):
+            st.session_state.tour_done = True
+            st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HEADER
 # ═══════════════════════════════════════════════════════════════════
 st.markdown(f"""
-<div class="hero-header">
-    <h1>Flent Lens — {city_name}</h1>
-    <div class="tagline">Multi-dimensional opportunity scoring across {len(df)} {geo_label}s · Arbitrage · Demand · Supply · Spatial Overlay</div>
-</div>
+<table style="width:100%;border-collapse:collapse;margin-bottom:2rem;">
+<tr>
+<!-- Blue accent bar -->
+<td style="width:4px;background:#2e86de;padding:0;"></td>
+<!-- Left: Project identity -->
+<td style="padding:24px 28px;vertical-align:top;width:50%;">
+  <div style="font-size:0.65rem;font-weight:700;color:#2e86de;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Flent Lens</div>
+  <div style="font-size:1.7rem;font-weight:800;color:#1b2838;line-height:1.2;letter-spacing:-0.02em;margin-bottom:10px;">{prof['city_name']} Market Intelligence</div>
+  <div style="font-size:0.88rem;color:#495057;line-height:1.65;">
+    Evaluating <b>{len(df)} {prof['geo_unit_label']}s</b> across arbitrage economics, demand intensity, supply feasibility, and spatial overlays to identify optimal co-living expansion zones.
+  </div>
+</td>
+<!-- Right: Research Q + Team -->
+<td style="padding:24px 28px;vertical-align:top;border-left:1px solid #e1e4e8;">
+  <div style="font-size:0.62rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Research Question</div>
+  <div style="font-size:0.82rem;color:#212529;line-height:1.55;font-style:italic;margin-bottom:14px;border-left:2px solid #2e86de;padding-left:12px;">
+    Which areas offer the most favourable combination of per-room arbitrage margin, convertible 3BHK+ supply, and demand for shared living?
+  </div>
+  <div style="font-size:0.62rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Team</div>
+  <div style="font-size:0.78rem;color:#495057;line-height:1.7;">
+    Harshith Bejjanki <span style="color:#adb5bd;">047</span> · Suneeth Boorgula <span style="color:#adb5bd;">016</span> · Sudhiksha <span style="color:#adb5bd;">033</span><br>
+    Peddi Sudeeksha <span style="color:#adb5bd;">027</span> · Vedanth Nagaarur <span style="color:#adb5bd;">019</span>
+  </div>
+  <div style="font-size:0.68rem;color:#adb5bd;margin-top:6px;">BBA · Python Analytics · April 2026</div>
+</td>
+</tr>
+</table>
 """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
-# KPI ROW
+# KPIs
 # ═══════════════════════════════════════════════════════════════════
-total_zones = len(df)
-tier_counts = df['tier'].value_counts().to_dict() if 'tier' in df.columns else {}
-t1 = tier_counts.get('Tier 1', 0)
-t2 = tier_counts.get('Tier 2', 0)
-t3 = tier_counts.get('Tier 3', 0)
-excluded = tier_counts.get('Excluded', 0)
+tc_map = df['tier'].value_counts().to_dict() if 'tier' in df.columns else {}
 viable = int(df['margin_viable'].sum()) if 'margin_viable' in df.columns else 0
-peak_margin = df['arb_margin_best'].max() if 'arb_margin_best' in df.columns else 0
-avg_score = df['OPP_SCORE'].mean() if 'OPP_SCORE' in df.columns else 0
-median_1bhk = df.loc[df['avg_rent_1bhk'] > 0, 'avg_rent_1bhk'].median() if 'avg_rent_1bhk' in df.columns else 0
+peak = df['arb_margin_best'].max() if 'arb_margin_best' in df.columns else 0
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
-c1.metric("Total Zones", f"{total_zones}")
-c2.metric("Tier 1 (Elite)", f"{t1}", delta=f"{t1/total_zones*100:.0f}% of total")
-c3.metric("Viable Zones", f"{viable}", delta=f"margin > 5%")
-c4.metric("Peak Arb Margin", f"₹{peak_margin:,.0f}/mo")
-c5.metric("Avg Opp Score", f"{avg_score:.1f}")
-c6.metric("Median 1BHK Rent", f"₹{median_1bhk:,.0f}")
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("Zones", len(df))
+k2.metric("Tier 1", tc_map.get('Tier 1', 0))
+k3.metric("Viable", viable)
+k4.metric("Peak Margin", inr(peak))
+k5.metric("Mean Score", f"{df['OPP_SCORE'].mean():.1f}")
 
 
 # ═══════════════════════════════════════════════════════════════════
-# TAB LAYOUT
+# TOP 3 WARD CARDS
 # ═══════════════════════════════════════════════════════════════════
-tab_map, tab_econ, tab_supply, tab_scoring, tab_validation, tab_data = st.tabs([
-    "🗺️ Opportunity Atlas",
-    "💰 Arbitrage Economics",
-    "📦 Supply & Demand",
-    "📊 Scoring Breakdown",
-    "📐 Econometric Validation",
-    "📋 Raw Data Explorer"
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+st.markdown("## Priority Investment Targets")
+st.markdown("The three highest-scoring zones, with full economic profile mirroring the Google Earth atlas cards.")
+
+top3 = df.nlargest(3, 'OPP_SCORE')
+cols = st.columns(3, gap="medium")
+for idx, (_, row) in enumerate(top3.iterrows()):
+    render_ward_card(cols[idx], row, idx + 1, prof['has_transit'], prof['has_sez'])
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TABS — with navigation guide
+# ═══════════════════════════════════════════════════════════════════
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+st.markdown("## Detailed Analysis")
+st.markdown("""
+<div class="tab-guide">
+  <div style="font-size:0.75rem;color:#6c757d;font-weight:600;">EXPLORE →</div>
+  <div class="tg-item"><span class="tg-num">1</span><span class="tg-label">Geographic Map</span></div>
+  <div class="tg-item"><span class="tg-num">2</span><span class="tg-label">Margin Economics</span></div>
+  <div class="tg-item"><span class="tg-num">3</span><span class="tg-label">Validation Proofs</span></div>
+  <div class="tg-item"><span class="tg-num">4</span><span class="tg-label">Data Export</span></div>
+</div>
+""", unsafe_allow_html=True)
+
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Opportunity Atlas", "Economic Analysis", "Statistical Validation", "Data Export"
 ])
 
+# ─────────── TAB 1 ───────────────────────────────────────────────
+with tab1:
+    st.markdown("### Geographic Opportunity Distribution")
+    st.markdown("""<div class="explain">
+    <b>What this shows:</b> Each zone is shaded by its composite Opportunity Score (0–100).
+    The score integrates arbitrage economics, demand intensity, supply depth, and spatial overlays.
+    <b>How to read it:</b> Darker blue zones have the highest investment priority. Hover over any
+    zone to see exact metrics.
+    </div>""", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────
-# TAB 1: INTERACTIVE MAP
-# ─────────────────────────────────────────────────────────────────
-with tab_map:
-    st.markdown("### Geospatial Opportunity Atlas")
-    st.caption("Interactive choropleth showing composite Opportunity Score across all zones. Hover for details.")
-
-    map_color = st.selectbox(
-        "Color by",
-        ['OPP_SCORE', 'arb_margin_best', 'demand_intensity_idx', 'supply_depth_idx', 'transit_score', 'sez_employment_score'],
-        index=0,
-        key="map_color_metric",
-    )
-
-    bbox = profile['bounding_box']
-    center_lat = sum(bbox['lat']) / 2
-    center_lon = sum(bbox['lon']) / 2
-
-    # Build hover data
-    hover_cols = {'OPP_SCORE': ':.1f', 'arb_margin_best': ':,.0f', 'tier': True}
-    if 'avg_rent_1bhk' in df.columns:
-        hover_cols['avg_rent_1bhk'] = ':,.0f'
-    if 'avg_rent_3bhk' in df.columns:
-        hover_cols['avg_rent_3bhk'] = ':,.0f'
-
-    fig_map = px.choropleth_mapbox(
-        df,
-        geojson=raw_geojson,
-        locations='_feature_id',
-        color=map_color,
-        color_continuous_scale='Viridis',
-        mapbox_style='carto-darkmatter',
-        zoom=10 if selected_city == 'hyderabad' else 9,
-        center={"lat": center_lat, "lon": center_lon},
-        opacity=0.7,
+    bbox = prof['bounding_box']
+    fig = px.choropleth_mapbox(
+        df, geojson=raw_geo, locations='_fid', color='OPP_SCORE',
+        color_continuous_scale=[[0,'#edf2ff'],[0.3,'#74c0fc'],[0.6,'#228be6'],[1,'#1b2838']],
+        mapbox_style='carto-positron',
+        zoom=9 if sel == 'bangalore' else 10,
+        center={"lat": sum(bbox['lat'])/2, "lon": sum(bbox['lon'])/2},
+        opacity=0.75,
         hover_name='ward_name',
-        hover_data=hover_cols,
+        hover_data={'OPP_SCORE':':.1f', 'tier':True, 'arb_margin_best':':,.0f', '_fid':False},
     )
-    fig_map.update_layout(
-        margin={"r": 0, "t": 0, "l": 0, "b": 0},
-        height=620,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(family="Inter", color="#e0e7ff"),
-        coloraxis_colorbar=dict(
-            title=dict(text=map_color.replace('_', ' ').title(), font=dict(color='#c7d2fe')),
-            tickfont=dict(color='#94a3b8'),
-            bgcolor='rgba(17,24,39,0.8)',
-            bordercolor='rgba(99,102,241,0.3)',
-            borderwidth=1,
-        )
-    )
-    st.plotly_chart(fig_map, use_container_width=True)
+    fig.update_layout(height=520)
+    style_chart(fig)
+    fig.update_layout(margin=dict(l=0,r=0,t=0,b=0),
+                      coloraxis_colorbar=dict(title="Score", thickness=12, len=0.5))
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Tier distribution mini-bar beneath the map
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        st.markdown("#### Tier Distribution")
-        tier_df = pd.DataFrame({
-            'Tier': ['Tier 1', 'Tier 2', 'Tier 3', 'Excluded'],
-            'Count': [t1, t2, t3, excluded]
-        })
-        tier_colors = {'Tier 1': '#10b981', 'Tier 2': '#f59e0b', 'Tier 3': '#ef4444', 'Excluded': '#475569'}
-        fig_tier = px.bar(
-            tier_df, x='Tier', y='Count', color='Tier',
-            color_discrete_map=tier_colors,
-            text='Count',
-        )
-        fig_tier.update_traces(textposition='outside', textfont=dict(color='#e0e7ff', size=14, family='Inter'))
-        fig_tier.update_layout(
-            showlegend=False,
-            height=300,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", color="#94a3b8"),
-            xaxis=dict(gridcolor='rgba(99,102,241,0.08)'),
-            yaxis=dict(gridcolor='rgba(99,102,241,0.08)', title=''),
-            margin=dict(l=20, r=20, t=20, b=40),
-        )
-        st.plotly_chart(fig_tier, use_container_width=True)
+    st.markdown("#### Tier Summary")
+    st.markdown("""<div class="explain">
+    <b>Tier methodology:</b> Zones are ranked by Opportunity Score, then classified into tiers at
+    the 75th, 50th, and 25th percentile thresholds. Tier 1 (≥75th pctl) represents the highest-conviction
+    investment targets. Zones not meeting margin viability thresholds are Excluded.
+    </div>""", unsafe_allow_html=True)
 
-    with col_b:
-        st.markdown("#### Top 10 Opportunity Zones")
-        top10 = df.nlargest(10, 'OPP_SCORE')[['ward_name', 'tier', 'OPP_SCORE', 'arb_margin_best', 'avg_rent_1bhk']].copy()
-        top10.insert(0, 'Rank', range(1, len(top10) + 1))
-        top10.columns = ['Rank', 'Zone', 'Tier', 'Score', 'Best Margin (₹)', '1BHK Rent (₹)']
-        st.dataframe(
-            top10.style.format({'Score': '{:.1f}', 'Best Margin (₹)': '₹{:,.0f}', '1BHK Rent (₹)': '₹{:,.0f}'}),
-            use_container_width=True,
-            hide_index=True,
-            height=380,
-        )
+    ts = df.groupby('tier').agg(Zones=('ward_id','count'), Score=('OPP_SCORE','mean'),
+                                 Margin=('arb_margin_best','mean')).reindex(['Tier 1','Tier 2','Tier 3','Excluded']).reset_index()
+    ts.columns = ['Tier', 'Zones', 'Avg Score', 'Avg Margin (₹)']
+    st.dataframe(ts.style.format({'Avg Score':'{:.1f}', 'Avg Margin (₹)':'{:,.0f}'}),
+                 use_container_width=True, hide_index=True)
 
 
-# ─────────────────────────────────────────────────────────────────
-# TAB 2: ARBITRAGE ECONOMICS
-# ─────────────────────────────────────────────────────────────────
-with tab_econ:
-    st.markdown("### 💰 Arbitrage Economics Deep Dive")
-    st.caption("The core business thesis — how Flent's room-splitting model creates margin from pricing inefficiency.")
+# ─────────── TAB 2 ───────────────────────────────────────────────
+with tab2:
+    st.markdown("### Arbitrage Margin Landscape")
+    st.markdown("""<div class="explain">
+    <b>What this shows:</b> Each bubble is a zone with a positive arbitrage margin. The x-axis
+    is the median retail rent for a standalone 1BHK (Flent's revenue source), and the y-axis is
+    the realized margin after subtracting the 3BHK master lease cost and applying demand discount.
+    <b>Bubble size</b> = 3BHK inventory count. <b>Why it matters:</b> Zones in the top-right
+    combine high yield <em>and</em> strong margins — the most defensible investment plays.
+    </div>""", unsafe_allow_html=True)
 
-    ec1, ec2, ec3, ec4 = st.columns(4)
-    avg_margin = df.loc[df['arb_margin_best'] > 0, 'arb_margin_best'].mean() if 'arb_margin_best' in df.columns else 0
-    median_3bhk = df.loc[df['avg_rent_3bhk'] > 0, 'avg_rent_3bhk'].median() if 'avg_rent_3bhk' in df.columns else 0
-    avg_discount = df['demand_discount'].mean() * 100 if 'demand_discount' in df.columns else 0
+    pf = df[(df['avg_rent_1bhk']>0) & (df['arb_margin_best']>0)].copy()
+    if len(pf) > 0:
+        fig2 = px.scatter(pf, x='avg_rent_1bhk', y='arb_margin_best', size='cnt_3bhk', color='tier',
+                          color_discrete_map={'Tier 1':'#0b7a3e','Tier 2':'#e67700','Tier 3':'#c92a2a','Excluded':'#adb5bd'},
+                          hover_name='ward_name', size_max=22,
+                          labels={'avg_rent_1bhk':'1BHK Retail Rent (₹)','arb_margin_best':'Best Arb Margin (₹/mo)'})
+        style_chart(fig2)
+        fig2.update_layout(height=420, legend=dict(title="Tier"))
+        st.plotly_chart(fig2, use_container_width=True)
 
-    ec1.metric("Avg Arbitrage Margin", f"₹{avg_margin:,.0f}/mo", delta="across viable zones")
-    ec2.metric("Median 3BHK Acq Cost", f"₹{median_3bhk:,.0f}/mo")
-    ec3.metric("Avg Demand Discount", f"{avg_discount:.1f}%", delta="applied to room pricing")
-    ec4.metric("Margin-Viable Zones", f"{viable} / {total_zones}")
-
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-
-    # Margin Distribution Histogram
-    col_hist, col_scatter = st.columns(2)
-    with col_hist:
-        st.markdown("#### Margin Distribution")
-        viable_df = df[df['arb_margin_best'] > 0].copy()
-        if len(viable_df) > 0:
-            fig_hist = px.histogram(
-                viable_df, x='arb_margin_best', nbins=30,
-                labels={'arb_margin_best': 'Best Arbitrage Margin (₹/month)'},
-                color_discrete_sequence=['#818cf8'],
-            )
-            fig_hist.update_layout(
-                height=380,
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", color="#94a3b8"),
-                xaxis=dict(gridcolor='rgba(99,102,241,0.08)', title_font=dict(color='#c7d2fe')),
-                yaxis=dict(gridcolor='rgba(99,102,241,0.08)', title='Count', title_font=dict(color='#c7d2fe')),
-                margin=dict(l=40, r=20, t=20, b=40),
-            )
-            st.plotly_chart(fig_hist, use_container_width=True)
-        else:
-            st.info("No viable margin zones found.")
-
-    with col_scatter:
-        st.markdown("#### 1BHK Rent vs Arbitrage Margin")
-        plot_df = df[(df['avg_rent_1bhk'] > 0) & (df['arb_margin_best'] > 0)].copy()
-        if len(plot_df) > 0:
-            fig_sc = px.scatter(
-                plot_df, x='avg_rent_1bhk', y='arb_margin_best',
-                color='tier',
-                color_discrete_map={'Tier 1': '#10b981', 'Tier 2': '#f59e0b', 'Tier 3': '#ef4444', 'Excluded': '#475569'},
-                hover_name='ward_name',
-                labels={'avg_rent_1bhk': '1BHK Retail Rent (₹)', 'arb_margin_best': 'Best Arb Margin (₹)'},
-                size='OPP_SCORE',
-                size_max=18,
-            )
-            fig_sc.update_layout(
-                height=380,
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", color="#94a3b8"),
-                xaxis=dict(gridcolor='rgba(99,102,241,0.08)', title_font=dict(color='#c7d2fe')),
-                yaxis=dict(gridcolor='rgba(99,102,241,0.08)', title_font=dict(color='#c7d2fe')),
-                legend=dict(font=dict(color='#c7d2fe')),
-                margin=dict(l=40, r=20, t=20, b=40),
-            )
-            st.plotly_chart(fig_sc, use_container_width=True)
-        else:
-            st.info("Insufficient data for scatter plot.")
-
-    # Margin by Tier box plot
-    st.markdown("#### Margin Distribution by Investment Tier")
-    tier_box_df = df[df['arb_margin_best'] > 0].copy()
-    if len(tier_box_df) > 0:
-        fig_box = px.box(
-            tier_box_df, x='tier', y='arb_margin_best',
-            color='tier',
-            color_discrete_map={'Tier 1': '#10b981', 'Tier 2': '#f59e0b', 'Tier 3': '#ef4444', 'Excluded': '#475569'},
-            labels={'arb_margin_best': 'Best Arb Margin (₹)', 'tier': 'Investment Tier'},
-            category_orders={'tier': ['Tier 1', 'Tier 2', 'Tier 3', 'Excluded']},
-        )
-        fig_box.update_layout(
-            showlegend=False,
-            height=360,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", color="#94a3b8"),
-            xaxis=dict(gridcolor='rgba(99,102,241,0.08)'),
-            yaxis=dict(gridcolor='rgba(99,102,241,0.08)'),
-            margin=dict(l=40, r=20, t=20, b=40),
-        )
-        st.plotly_chart(fig_box, use_container_width=True)
+    st.markdown("#### Complete Ward Economics Table")
+    if '📊 Full Analysis' in sheets:
+        st.dataframe(sheets['📊 Full Analysis'], use_container_width=True, hide_index=True)
 
 
-# ─────────────────────────────────────────────────────────────────
-# TAB 3: SUPPLY & DEMAND
-# ─────────────────────────────────────────────────────────────────
-with tab_supply:
-    st.markdown("### 📦 Supply Depth & Demand Intensity")
-    st.caption("Analyzes the rental inventory structure and demand pressure across zones.")
+# ─────────── TAB 3 ───────────────────────────────────────────────
+with tab3:
+    st.markdown("### Econometric Validation")
+    st.markdown("Two independent statistical tests verify the structural foundation of the arbitrage model.")
+    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-    sd1, sd2, sd3, sd4 = st.columns(4)
-    total_3bhk = int(df['cnt_3bhk'].sum()) if 'cnt_3bhk' in df.columns else 0
-    total_listings = int(df[['cnt_1bhk', 'cnt_2bhk', 'cnt_3bhk', 'cnt_4bhk']].sum().sum()) if 'cnt_1bhk' in df.columns else 0
-    avg_demand = df['demand_intensity_idx'].mean() if 'demand_intensity_idx' in df.columns else 0
-    avg_supply = df['supply_depth_idx'].mean() if 'supply_depth_idx' in df.columns else 0
+    # 1. OLS Panel
+    with st.container(border=True):
+        st.markdown('<h3>1. Structural OLS Regression</h3>', unsafe_allow_html=True)
+        
+        col_txt, col_img = st.columns([2, 3], gap="large")
+        with col_txt:
+            st.markdown("""
+            **Purpose:** Tests whether 3BHK acquisition costs are structurally decoupled from 1BHK retail rents.
+            
+            A low R² and sub-1.0 β coefficient confirm **market fragmentation** — large assets do not track
+            small-room pricing linearly. This mathematically proves that Flent's room-splitting model exploits
+            a real pricing inefficiency.
+            """)
+            
+            if ols:
+                st.markdown("---")
+                st.markdown(f"**R² (Fit Quality):** `{ols.get('R² (Fit Quality)','—')}`")
+                st.markdown(f"**β (Cost Multiplier):** `{ols.get('1BHK Cost Multiplier (β)','—')}`")
+                st.markdown(f"**Thesis Verdict:** `{ols.get('Arbitrage Thesis','—')}`")
+            else:
+                st.info("Validation metrics pending rerun.")
 
-    sd1.metric("Total Listings", f"{total_listings:,}")
-    sd2.metric("3BHK Inventory", f"{total_3bhk:,}", delta=f"{total_3bhk/max(total_listings,1)*100:.1f}% of supply")
-    sd3.metric("Avg Demand Index", f"{avg_demand:.3f}")
-    sd4.metric("Avg Supply Index", f"{avg_supply:.3f}")
+        with col_img:
+            if os.path.exists(P['ols_img']):
+                st.image(P['ols_img'], caption="OLS Analysis: 1BHK Rent vs 3BHK Cost", use_container_width=True)
+            else:
+                st.info("Visualization pending rerun.")
 
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
+    st.write("") # Spacer
 
-    # BHK mix treemap
-    col_bhk, col_demand = st.columns(2)
-    with col_bhk:
-        st.markdown("#### BHK Type Distribution (City-wide)")
-        bhk_totals = {
-            '1 BHK': int(df['cnt_1bhk'].sum()) if 'cnt_1bhk' in df.columns else 0,
-            '2 BHK': int(df['cnt_2bhk'].sum()) if 'cnt_2bhk' in df.columns else 0,
-            '3 BHK': int(df['cnt_3bhk'].sum()) if 'cnt_3bhk' in df.columns else 0,
-            '4 BHK': int(df['cnt_4bhk'].sum()) if 'cnt_4bhk' in df.columns else 0,
-        }
-        bhk_df = pd.DataFrame({'BHK Type': bhk_totals.keys(), 'Count': bhk_totals.values()})
-        bhk_df = bhk_df[bhk_df['Count'] > 0]
-        fig_bhk = px.pie(
-            bhk_df, names='BHK Type', values='Count',
-            color_discrete_sequence=['#818cf8', '#c084fc', '#f472b6', '#fb923c'],
-            hole=0.45,
-        )
-        fig_bhk.update_traces(textinfo='label+percent', textfont=dict(color='#e0e7ff', size=13))
-        fig_bhk.update_layout(
-            height=380,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", color="#94a3b8"),
-            legend=dict(font=dict(color='#c7d2fe')),
-            margin=dict(l=20, r=20, t=20, b=20),
-        )
-        st.plotly_chart(fig_bhk, use_container_width=True)
-
-    with col_demand:
-        st.markdown("#### Demand vs Supply Index")
-        if 'demand_intensity_idx' in df.columns and 'supply_depth_idx' in df.columns:
-            plot_ds = df[(df['demand_intensity_idx'] > 0) | (df['supply_depth_idx'] > 0)].copy()
-            fig_ds = px.scatter(
-                plot_ds, x='supply_depth_idx', y='demand_intensity_idx',
-                color='tier',
-                color_discrete_map={'Tier 1': '#10b981', 'Tier 2': '#f59e0b', 'Tier 3': '#ef4444', 'Excluded': '#475569'},
-                hover_name='ward_name',
-                labels={'supply_depth_idx': 'Supply Depth Index', 'demand_intensity_idx': 'Demand Intensity Index'},
-                size='OPP_SCORE', size_max=16,
-            )
-            fig_ds.update_layout(
-                height=380,
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="Inter", color="#94a3b8"),
-                xaxis=dict(gridcolor='rgba(99,102,241,0.08)'),
-                yaxis=dict(gridcolor='rgba(99,102,241,0.08)'),
-                legend=dict(font=dict(color='#c7d2fe')),
-                margin=dict(l=40, r=20, t=20, b=40),
-            )
-            st.plotly_chart(fig_ds, use_container_width=True)
-
-    # 3BHK Quartile Breakdown
-    if os.path.exists(paths['quartiles']):
-        st.markdown("#### 3BHK Supply Price Quartile Breakdown")
-        st.caption("Rent distribution across Q1–Q4 for 3BHK inventory per zone. Q1 (bottom 25%) is Flent's target acquisition tier.")
-        q_df = pd.read_excel(paths['quartiles'], sheet_name=0)
-        st.dataframe(q_df.head(20), use_container_width=True, hide_index=True)
+    # 2. Moran Panel
+    with st.container(border=True):
+        st.markdown('<h3>2. Moran\'s I — Spatial Autocorrelation</h3>', unsafe_allow_html=True)
+        
+        col_txt2, col_img2 = st.columns([2, 3], gap="large")
+        with col_txt2:
+            st.markdown("""
+            **Purpose:** Tests if rents cluster geographically to validate the spatial spillover rules.
+            
+            - **HH Quadrant:** Premium clusters.
+            - **LL Quadrant:** Affordable pockets.
+            - **LH Quadrant:** **Arbitrage Sweet Spots.** Low 1BHK rent zones surrounded by high-rent pressure.
+            
+            A significant positive Moran's I confirms the market has a real, spatially dependent structure.
+            """)
+        
+        with col_img2:
+            if os.path.exists(P['moran']):
+                st.image(P['moran'], caption="Moran Scatter Plot: Spatial Clustering", use_container_width=True)
+            else:
+                st.info("Visualization pending rerun.")
 
 
-# ─────────────────────────────────────────────────────────────────
-# TAB 4: SCORING BREAKDOWN
-# ─────────────────────────────────────────────────────────────────
-with tab_scoring:
-    st.markdown("### 📊 Composite Scoring Breakdown")
-    st.caption("See how the Opportunity Score is assembled from economic, demand, supply, and overlay signals.")
-
-    # Stage breakdown table from the report
-    stage_sheet_name = '📈 Stage Breakdown'
-    if stage_sheet_name in report_sheets:
-        stage_df = report_sheets[stage_sheet_name]
-        st.markdown("#### Score Decomposition per Zone")
-        st.dataframe(stage_df.head(30), use_container_width=True, hide_index=True)
+# ─────────── TAB 4 ───────────────────────────────────────────────
+with tab4:
+    st.markdown("### Data Export")
+    view = st.radio("View", ["Executive Targets", "Full Analysis", "Score Breakdown"], horizontal=True)
+    sn = {"Executive Targets":"🏆 Top 10 Targets", "Full Analysis":"📊 Full Analysis",
+          "Score Breakdown":"📈 Stage Breakdown"}.get(view)
+    if sn and sn in sheets:
+        st.dataframe(sheets[sn], use_container_width=True, hide_index=True)
     else:
-        st.info("Stage breakdown sheet not found in the report.")
+        st.info("Sheet not available.")
 
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-
-    # Score components radar for top 5
-    st.markdown("#### Multi-dimensional Profile — Top 5 Zones")
-    top5 = df.nlargest(5, 'OPP_SCORE')
-    radar_cols = ['norm_arb_margin_pct', 'demand_intensity_idx', 'supply_depth_idx']
-    radar_labels = ['Arbitrage Strength', 'Demand Intensity', 'Supply Depth']
-    if profile['has_transit']:
-        radar_cols.append('norm_transit')
-        radar_labels.append('Transit Score')
-    if profile['has_sez']:
-        radar_cols.append('norm_sez')
-        radar_labels.append('SEZ Proximity')
-
-    available_radar = [c for c in radar_cols if c in df.columns]
-    available_labels = [radar_labels[i] for i, c in enumerate(radar_cols) if c in df.columns]
-
-    if len(available_radar) >= 3 and len(top5) > 0:
-        fig_radar = go.Figure()
-        colors_radar = ['#818cf8', '#f472b6', '#34d399', '#fbbf24', '#fb923c']
-        for idx, (_, row) in enumerate(top5.iterrows()):
-            vals = [float(row.get(c, 0)) for c in available_radar]
-            vals.append(vals[0])  # close the polygon
-            labels_r = available_labels + [available_labels[0]]
-            fig_radar.add_trace(go.Scatterpolar(
-                r=vals, theta=labels_r, fill='toself',
-                name=str(row.get('ward_name', f'Zone {idx+1}')),
-                line=dict(color=colors_radar[idx % len(colors_radar)]),
-                opacity=0.65,
-            ))
-        fig_radar.update_layout(
-            polar=dict(
-                bgcolor='rgba(0,0,0,0)',
-                radialaxis=dict(visible=True, range=[0, 1], gridcolor='rgba(99,102,241,0.15)', tickfont=dict(color='#64748b')),
-                angularaxis=dict(gridcolor='rgba(99,102,241,0.15)', tickfont=dict(color='#c7d2fe', size=11)),
-            ),
-            height=480,
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="Inter", color="#94a3b8"),
-            legend=dict(font=dict(color='#c7d2fe', size=12)),
-            margin=dict(l=80, r=80, t=40, b=40),
-        )
-        st.plotly_chart(fig_radar, use_container_width=True)
-    else:
-        st.info("Insufficient scoring dimensions to render radar chart.")
-
-    # Aura / Spillover analysis
-    st.markdown("#### Spatial Spillover (Aura) Effects")
-    st.caption("Zones receive a boost or penalty based on the quality of their geographic neighbors.")
-    aura_affected = df[df['aura_multiplier'] != 1.0].copy() if 'aura_multiplier' in df.columns else pd.DataFrame()
-    if len(aura_affected) > 0:
-        aura_display = aura_affected[['ward_name', 'tier', 'OPP_SCORE', 'aura_multiplier', 'aura_sources']].copy()
-        aura_display.columns = ['Zone', 'Tier', 'Final Score', 'Aura Multiplier', 'Source Neighbors']
-        st.dataframe(
-            aura_display.sort_values('Aura Multiplier', ascending=False),
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info("No spatial spillover effects detected — scores are purely zone-intrinsic.")
-
-
-# ─────────────────────────────────────────────────────────────────
-# TAB 5: ECONOMETRIC VALIDATION
-# ─────────────────────────────────────────────────────────────────
-with tab_validation:
-    st.markdown("### 📐 Econometric Validation & Statistical Rigor")
-    st.caption("Two independent tests verify the statistical foundation of the arbitrage thesis.")
-
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-
-    # ── OLS REGRESSION ─────────────────────────────────────────
-    st.markdown("#### 1. Arbitrage Structural OLS Regression")
-    st.markdown("""
-    > **Model:** `OLS(Q25 3BHK Acquisition Cost ~ Median 1BHK Retail Rent)`
-    >
-    > This regression tests whether the cost of acquiring a 3BHK (at Q1 pricing) is structurally
-    > decoupled from the retail price of 1BHK rooms — the fundamental premise behind Flent's arbitrage.
-    """)
-
-    # Extract OLS values
-    r2_val = ols_data.get('R² (Fit Quality)', 'N/A')
-    beta_val = ols_data.get('1BHK Cost Multiplier (β)', 'N/A')
-    intercept_val = ols_data.get('Intercept (α)', 'N/A')
-    pval_val = ols_data.get('p-value (β)', 'N/A')
-    nobs_val = ols_data.get('Observations (Wards)', 'N/A')
-    breakeven_val = ols_data.get('Breakeven Demand Discount Min', 'N/A')
-    ddf_val = ols_data.get("Flent's Operational DDF", 'N/A')
-    thesis_val = ols_data.get('Arbitrage Thesis', 'N/A')
-
-    # KPI metrics for OLS
-    ols_c1, ols_c2, ols_c3, ols_c4 = st.columns(4)
-    ols_c1.metric("R² (Fit Quality)", r2_val)
-    ols_c2.metric("β (Cost Multiplier)", beta_val)
-    ols_c3.metric("Intercept (α)", intercept_val)
-    ols_c4.metric("Observations", nobs_val)
-
-    # Thesis KPIs
-    th1, th2, th3 = st.columns(3)
-    th1.metric("Breakeven Discount", breakeven_val)
-    th2.metric("Operational DDF", ddf_val)
-    th3.metric("Arbitrage Thesis", thesis_val)
-
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-
-    # Plain English interpretations
-    st.markdown("#### Plain-English Interpretation")
-
-    beta_explain = ols_data.get(
-        [k for k in ols_data if k.startswith('What is β')][0] if any(k.startswith('What is β') for k in ols_data) else '',
-        ''
-    )
-    r2_explain = ols_data.get(
-        [k for k in ols_data if k.startswith('What is R²')][0] if any(k.startswith('What is R²') for k in ols_data) else '',
-        ''
-    )
-    be_explain = ols_data.get(
-        [k for k in ols_data if k.startswith('Breakeven Discount')][0] if any(k.startswith('Breakeven Discount') for k in ols_data) else '',
-        ''
-    )
-    ddf_explain = ols_data.get(
-        [k for k in ols_data if k.startswith('Operational DDF')][0] if any(k.startswith('Operational DDF') for k in ols_data) else '',
-        ''
-    )
-
-    interp_html = f"""
-    <div class="ols-grid">
-        <div class="ols-item">
-            <div class="ols-label">β — Cost Multiplier</div>
-            <div class="ols-val">{beta_val}</div>
-            <div class="ols-desc">{beta_explain}</div>
-        </div>
-        <div class="ols-item">
-            <div class="ols-label">R² — Fit Quality</div>
-            <div class="ols-val">{r2_val}</div>
-            <div class="ols-desc">{r2_explain}</div>
-        </div>
-        <div class="ols-item">
-            <div class="ols-label">Breakeven Threshold</div>
-            <div class="ols-val">{breakeven_val}</div>
-            <div class="ols-desc">{be_explain}</div>
-        </div>
-        <div class="ols-item">
-            <div class="ols-label">Operational Margin of Safety</div>
-            <div class="ols-val">{ddf_val}</div>
-            <div class="ols-desc">{ddf_explain}</div>
-        </div>
-    </div>
-    """
-    st.markdown(interp_html, unsafe_allow_html=True)
-
-    st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-
-    # OLS Regression plot
-    col_ols_img, col_moran_img = st.columns(2)
-    with col_ols_img:
-        st.markdown("#### OLS Regression Plot")
-        if os.path.exists(paths['ols_plot']):
-            st.image(paths['ols_plot'], use_container_width=True)
-        else:
-            st.info("OLS regression plot not available.")
-
-    # ── MORAN's I ──────────────────────────────────────────────
-    with col_moran_img:
-        st.markdown("#### 2. Moran's I — Spatial Autocorrelation")
-        if os.path.exists(paths['moran']):
-            st.image(paths['moran'], use_container_width=True)
-        else:
-            st.info("Moran's I plot not available.")
-
-    st.markdown("""
-    > **What Moran's I tests:** Whether 1BHK rents in nearby wards are more similar than expected
-    > by chance (spatial clustering). A significant Moran's I confirms that rents follow geographic
-    > patterns, validating the spatial spillover boost used in the scoring model.
-    >
-    > - **I > 0 (positive):** Nearby zones have similar rents → spatial clustering exists.
-    > - **p < 0.05:** The clustering is statistically significant, not random.
-    > - **Implication:** Spatial adjacency carries predictive value, justifying the "aura multiplier."
-    """)
-
-
-# ─────────────────────────────────────────────────────────────────
-# TAB 6: RAW DATA EXPLORER
-# ─────────────────────────────────────────────────────────────────
-with tab_data:
-    st.markdown("### 📋 Raw Data Explorer")
-
-    data_source = st.radio(
-        "Data Source",
-        ["GeoJSON Properties", "Excel — Full Analysis", "Excel — Top 10 Targets"],
-        horizontal=True,
-    )
-
-    if data_source == "GeoJSON Properties":
-        st.caption(f"All {len(df)} zone records from the ward_analysis.geojson output.")
-        # Drop geometry-heavy columns for display
-        display_df = df.drop(columns=['_feature_id', 'closest_sezs', 'aura_sources'], errors='ignore')
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    elif data_source == "Excel — Full Analysis":
-        sheet_name = '📊 Full Analysis'
-        if sheet_name in report_sheets:
-            st.caption("Complete ward-level analytics from the Excel report.")
-            st.dataframe(report_sheets[sheet_name], use_container_width=True, hide_index=True)
-        else:
-            st.warning("Full Analysis sheet not found.")
-
-    elif data_source == "Excel — Top 10 Targets":
-        sheet_name = '🏆 Top 10 Targets'
-        if sheet_name in report_sheets:
-            st.caption("Executive-level top 10 investment targets.")
-            st.dataframe(report_sheets[sheet_name], use_container_width=True, hide_index=True)
-        else:
-            st.warning("Top 10 Targets sheet not found.")
-
-    # Download button
-    if os.path.exists(paths['report']):
-        with open(paths['report'], 'rb') as f:
-            st.download_button(
-                "⬇️ Download Full Excel Report",
-                f,
-                file_name=f"flent_lens_report_{selected_city}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+    if os.path.exists(P['report']):
+        with open(P['report'], "rb") as f:
+            st.download_button("📂 Download Excel Report", f,
+                               file_name=f"Flent_Lens_{sel}.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                               use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
 # FOOTER
 # ═══════════════════════════════════════════════════════════════════
-st.markdown('<div class="section-sep"></div>', unsafe_allow_html=True)
-st.markdown("""
-<div style="text-align: center; padding: 20px 0 40px 0;">
-    <span style="color: #475569; font-size: 0.8rem;">
-        Flent Lens Analytics Platform · Built with Streamlit & Plotly ·
-        Data Pipeline: <code style="color: #818cf8;">python main.py</code>
-    </span>
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+st.caption(f"Flent Lens · {prof['city_name']} · {len(df)} zones · Generated from pipeline output")
