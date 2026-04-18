@@ -473,6 +473,25 @@ def inr(val):
     if val is None or pd.isna(val): return "₹0"
     return f"₹{int(val):,}"
 
+def inrk(v):
+    if v is None or pd.isna(v): return "₹0"
+    v = float(v)
+    if v >= 1000: return f"₹{v/1000:.1f}k"
+    return f"₹{int(v)}"
+
+def _f(row, col):
+    v = row.get(col, 0)
+    try: return float(v) if pd.notna(v) else 0.0
+    except: return 0.0
+
+def _i(row, col):
+    v = row.get(col, 0)
+    try: return int(float(v)) if pd.notna(v) else 0
+    except: return 0
+
+def tc(tier):
+    return {'Tier 1':'#0b7a3e','Tier 2':'#e67700','Tier 3':'#c92a2a'}.get(tier, '#adb5bd')
+
 # ═══════════════════════════════════════════════════════════════════
 # CHART HELPERS
 # ═══════════════════════════════════════════════════════════════════
