@@ -66,8 +66,6 @@ def load_kml(path: str, layer: int = 0) -> gpd.GeoDataFrame:
         layers = fiona.listlayers(path)
         gdf = gpd.read_file(path, driver='KML', layer=layers[layer])
         gdf = gdf.to_crs(config.CRS_GEOGRAPHIC)
-        # Filter out empty OR invalid geometries
-        gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna() & gdf.geometry.is_valid].reset_index(drop=True)
         return gdf
     except Exception as e:
         print_error(f"Could not load KML at {path}. Error: {e}")
@@ -120,116 +118,88 @@ def _parse_kml_attributes(path: str) -> pd.DataFrame:
 
     return pd.DataFrame(records)
 
-
 def load_geo_zones(path: str = None) -> gpd.GeoDataFrame:
-    """
-    Load geographic zones — works for both BBMP ward KMLs and pincode KMLs.
-    
-    The function auto-detects the schema from the KML attributes and produces
-    a normalized GeoDataFrame with columns: ['ward_id', 'ward_name', 'geometry']
-    (and optionally 'zone_name').
-    
-    We keep 'ward_id' and 'ward_name' as column names regardless of whether the 
-    actual geo-unit is a ward, pincode, or something else. This avoids cascading 
-    renames across the entire analytics pipeline.
-    """
     path = path or config.GEO_KML
     geo_label = config.GEO_UNIT_LABEL
 
     with log_process(f"Loading {geo_label}s (parsing SchemaData attributes)"):
-        # Get geometries via geopandas
+        # Get geometries via geopandas (raw, inclusive of empty/invalid)
         gdf = load_kml(path)
 
-        # Parse rich attributes from raw XML (fiona drops ExtendedData/SchemaData)
+        # Parse rich attributes from raw XML
         attrs = _parse_kml_attributes(path)
 
         if len(attrs) == len(gdf) and not attrs.empty:
-            # Attach parsed attributes to geometry rows by position
+            # Attach parsed attributes by position
             gdf = gdf.reset_index(drop=True)
             attrs = attrs.reset_index(drop=True)
+            
+            for col in attrs.columns:
+                target_col = col
+                if col in gdf.columns:
+                    target_col = f'_kml_{col}'
+                gdf[target_col] = attrs[col]
 
             # ── DETECTION: Is this a pincode KML or a ward KML? ──
-            is_pincode_kml = 'PINCODE' in attrs.columns
+            is_pincode_kml = 'PINCODE' in gdf.columns
 
             if is_pincode_kml:
-                # ── PINCODE KML SCHEMA ──
-                # Schema: PINCODE, PT_ID, STATE_UT
-                gdf['ward_id']   = attrs['PINCODE'].astype(str).str.strip()
-                gdf['ward_name'] = attrs['PINCODE'].astype(str).str.strip()
-                if 'STATE_UT' in attrs.columns:
-                    gdf['zone_name'] = attrs['STATE_UT'].astype(str).str.strip()
-                print_detail(f"Detected pincode KML schema — {gdf['ward_id'].nunique()} unique pincodes")
-
+                gdf['ward_id']   = gdf['PINCODE'].astype(str).str.strip()
+                gdf['ward_name'] = gdf['PINCODE'].astype(str).str.strip()
             else:
-                # ── WARD KML SCHEMA (original Bangalore logic) ──
-                # USE GLOBALLY UNIQUE ID
-                if 'id' in attrs.columns:
+                # ── WARD KML SCHEMA ──
+                # Prefer the rich 'id' from ExtendedData (attrs) if extracted
+                id_col = '_kml_id' if '_kml_id' in gdf.columns else ('id' if 'id' in gdf.columns else None)
+                if id_col:
                     def _extract_global_id(raw_id):
-                        """Extract numeric suffix from 'ward_369_final.N' → N"""
                         m = re.search(r'\.(\d+)$', str(raw_id))
                         return int(m.group(1)) if m else None
-
-                    gdf['ward_id'] = attrs['id'].apply(_extract_global_id).astype(str)
-                    print_detail(f"Extracted {gdf['ward_id'].nunique()} globally unique ward IDs from 'id' field")
-                elif 'ward_id' in attrs.columns:
-                    # Fallback: construct composite key from zone + ward_id
-                    if 'zone_name' in attrs.columns:
-                        gdf['ward_id'] = (attrs['zone_name'].str.strip() + '_' + attrs['ward_id'].str.strip())
-                    else:
-                        gdf['ward_id'] = attrs['ward_id'].astype(str).str.strip()
+                    gdf['ward_id'] = gdf[id_col].apply(_extract_global_id).astype(str)
+                elif 'ward_id' in gdf.columns:
+                    gdf['ward_id'] = gdf['ward_id'].astype(str).str.strip()
                 else:
                     gdf['ward_id'] = [f'W_{i:03d}' for i in range(len(gdf))]
 
-                # Ward name: prefer Ward_Name (has format "N - Name"), extract just the name part
-                if 'Ward_Name' in attrs.columns:
-                    def _clean_ward_name(raw):
-                        """Strip leading 'N - ' prefix from 'Ward_Name' like '25 - Vinayaka Layout'"""
-                        raw = str(raw).strip()
-                        m = re.match(r'^\d+\s*-\s*(.+)$', raw)
-                        return m.group(1).strip() if m else raw
-                    gdf['ward_name'] = attrs['Ward_Name'].apply(_clean_ward_name)
-                elif 'ward_name' in attrs.columns:
-                    gdf['ward_name'] = attrs['ward_name'].astype(str).str.strip()
-                elif 'Name' in attrs.columns:
-                    gdf['ward_name'] = attrs['Name'].astype(str).str.strip()
-                elif '_kml_name' in attrs.columns:
-                    gdf['ward_name'] = attrs['_kml_name'].astype(str).str.strip()
+                if 'Ward_Name' in gdf.columns:
+                    gdf['ward_name'] = gdf['Ward_Name']
+                elif 'ward_name' in gdf.columns:
+                    gdf['ward_name'] = gdf['ward_name']
+                elif 'Name' in gdf.columns:
+                    gdf['ward_name'] = gdf['Name']
                 else:
                     gdf['ward_name'] = gdf['ward_id']
-
-                # Carry useful fields for downstream analysis
-                keep_extras = ['Corporation', 'ac', 'Assembly', 'zone_name',
-                               'ward_id']  # original per-zone ward_id
-                for col in keep_extras:
-                    target = col.lower()
-                    if target == 'ward_id':
-                        target = 'zone_ward_num'  # keep original per-zone number
-                    if col in attrs.columns:
-                        gdf[target] = attrs[col]
-
-            print_detail(f"Parsed {len(attrs.columns)} attributes from SchemaData XML")
         else:
-            print_warning("SchemaData parse mismatch — using synthetic IDs.")
-            if 'Name' in gdf.columns and gdf['Name'].str.len().max() > 0:
+            print_warning("SchemaData mismatch — using basic KML attributes.")
+            if 'Name' in gdf.columns:
                 gdf = gdf.rename(columns={'Name': 'ward_name'})
                 gdf['ward_id'] = gdf['ward_name']
-            else:
-                gdf['ward_name'] = [f'{config.GEO_UNIT_LABEL} {i+1}' for i in range(len(gdf))]
-                gdf['ward_id'] = [f'{i+1}' for i in range(len(gdf))]
+
+        # ── POST-JOIN PROCESSING ──
+        # 1. Filter out empty/invalid geometries
+        gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna() & gdf.geometry.is_valid].copy()
+        
+        # 2. Project/Normalization
+        gdf['ward_id'] = gdf['ward_id'].astype(str)
+        
+        # 3. Handle duplicates / multi-part polygons (CRITICAL FOR MORAN'S I weights)
+        if gdf.duplicated(subset='ward_id').sum() > 0:
+            print_warning(f"Duplicate IDs found — merging geometries (dissolve)")
+            # Aggregation: take first for names, etc.
+            gdf = gdf.dissolve(by='ward_id', aggfunc='first').reset_index()
+
+        # 4. Final display cleaning (catch-all for names)
+        def _final_clean(raw):
+            raw = str(raw).strip()
+            m = re.match(r'^\d+\s*-\s*(.+)$', raw)
+            return m.group(1).strip() if m else raw
+        if 'ward_name' in gdf.columns:
+            gdf['ward_name'] = gdf['ward_name'].apply(_final_clean)
 
         keep_cols = ['ward_id', 'ward_name', 'zone_name', 'geometry']
         gdf = gdf[[c for c in keep_cols if c in gdf.columns]].copy()
-        # Convert ward_id to string so sjoin joins cleanly
-        gdf['ward_id'] = gdf['ward_id'].astype(str)
-
-        # Handle duplicates
-        dupes = gdf.duplicated(subset='ward_id').sum()
-        if dupes > 0:
-            print_warning(f"{dupes} duplicate IDs found — merging geometries")
-            gdf = gdf.dissolve(by='ward_id', aggfunc='first').reset_index()
 
         print_info(f"Loaded [highlight]{len(gdf)}[/highlight] {geo_label}s. "
-                   f"Sample: {gdf['ward_id'].iloc[0]} — {gdf.get('ward_name', pd.Series(['?'])).iloc[0]}")
+                   f"Sample: {gdf['ward_id'].iloc[0]} — {gdf['ward_name'].iloc[0]}")
         return gdf
 
 

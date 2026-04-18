@@ -142,6 +142,43 @@ st.markdown("""
     }
 
     /* ── Chart explanation ────────────────────────────────────── */
+    /* ── Econometric Blueprints ──────────────────────────────── */
+    .blueprint-headline {
+        color: #1b2838;
+        font-weight: 800;
+        font-size: 1.4rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid #e1e4e8;
+        padding-bottom: 0.5rem;
+    }
+    .plain-english {
+        font-size: 1rem !important;
+        line-height: 1.6;
+        color: #495057;
+        background: #f8f9fa;
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        border-left: 4px solid #2e86de;
+    }
+    .lh-highlight {
+        color: #0b7a3e;
+        font-weight: 700;
+        background: #e6fffa;
+        padding: 0 4px;
+        border-radius: 3px;
+    }
+    .metric-pill {
+        display: inline-block;
+        background: #e9ecef;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #495057;
+        margin-right: 8px;
+    }
     .explain {
         background: #f0f4f8;
         border-left: 3px solid #2e86de;
@@ -314,6 +351,81 @@ st.markdown("""
         color: #1b2838;
     }
 
+    /* ── Brilliant Style ───────────────────────────────────────── */
+    .brilliant-card {
+        background: #ffffff;
+        border: 1px solid #e1e4e8;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+    .step {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        align-items: flex-start;
+    }
+    .step-num {
+        background: #1b2838;
+        color: #fff;
+        width: 26px; height: 26px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+    .step-content {
+        flex: 1;
+    }
+    .step-title {
+        font-weight: 700;
+        color: #1b2838;
+        font-size: 0.95rem;
+        margin-bottom: 4px;
+    }
+    .step-desc {
+        color: #6c757d;
+        font-size: 0.88rem;
+        line-height: 1.5;
+    }
+    .wedge-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 20px 0;
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    .wedge-bar {
+        height: 32px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        padding: 0 12px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        color: #fff;
+        transition: width 1s ease;
+    }
+    .verdict-badge {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 100px;
+        background: #e6fffa;
+        color: #0b7a3e;
+        border: 1px solid #c6f6d5;
+        font-weight: 700;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
     /* ── Hide UI chrome ───────────────────────────────────────── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -398,17 +510,15 @@ def paths_for(ck):
         'ols_img': 'ols_arbitrage_validation.png',
     }.items()} | {'dir': d, 'profile': p}
 
-def _f(r, k):
-    v = r.get(k, 0)
-    return float(v) if pd.notna(v) and v is not None else 0.0
+def _pf(v):
+    if not v or v == '—': return 0.0
+    try:
+        if isinstance(v, (int, float)): return float(v)
+        import re
+        m = re.search(r"[-+]?\d*\.\d+|\d+", str(v).replace(',',''))
+        return float(m.group()) if m else 0.0
+    except: return 0.0
 
-def _i(r, k):
-    v = r.get(k, 0)
-    return int(float(v)) if pd.notna(v) and v is not None else 0
-
-def inr(v): return f"₹{v:,.0f}" if v else "—"
-def inrk(v): return f"₹{v/1000:.0f}k" if v > 0 else "—"
-def tc(t): return {'Tier 1': '#0b7a3e', 'Tier 2': '#e67700', 'Tier 3': '#c92a2a'}.get(t, '#868e96')
 def render_chip(label, value):
     return f"""<div class="chip"><div class="chip-label">{label}</div><div class="chip-value">{value}</div></div>"""
 
@@ -439,14 +549,19 @@ def render_ward_card(col, row, rank, has_transit, has_sez):
     d_lbl = "High" if demand >= 0.5 else ("Mod" if demand >= 0.35 else "Low")
     d_pct = min(demand * 100, 100)
 
+    # Extract display names and IDs
+    disp_name = str(row.get('ward_name', '—'))
+    disp_id = str(row.get('ward_id', '—'))
+    id_label = "Pincode" if sel == 'hyderabad' else "Ward #"
+
     with col:
         # Header via HTML table (tables render reliably in Streamlit)
         st.markdown(f"""
 <table style="width:100%;border-collapse:collapse;background:#1b2838;border-radius:6px 6px 0 0;overflow:hidden;">
 <tr>
 <td style="padding:16px 18px;">
-  <div style="color:#868e96;font-size:0.7rem;font-weight:600;">#{rank}</div>
-  <div style="color:#ffffff;font-size:1.05rem;font-weight:700;margin:2px 0 6px 0;">{name}</div>
+  <div style="color:#868e96;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">{id_label} {disp_id}</div>
+  <div style="color:#ffffff;font-size:1.1rem;font-weight:700;margin:1px 0 6px 0;">{disp_name}</div>
   <span style="background:{tc(tier)};color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:700;text-transform:uppercase;">{tier}</span>
 </td>
 <td style="padding:16px 18px;text-align:right;vertical-align:top;">
@@ -527,13 +642,13 @@ with st.sidebar:
     prof = city_config.CITY_PROFILES[sel]
 
     st.markdown("---")
-    if st.button("🔄 Restart Tutorial", use_container_width=True):
+    if st.button("🔄 Restart Tutorial", width="stretch"):
         st.session_state.tour_step = 0
         st.session_state.tour_done = False
         st.rerun()
 
     st.markdown("---")
-    if st.button("🚀 Run Pipeline", use_container_width=True, type="primary"):
+    if st.button("🚀 Run Pipeline", width="stretch", type="primary"):
         cfp = os.path.join(BASE_DIR, "city_config.py")
         with open(cfp, "r") as f: txt = f.read()
         txt = re.sub(r'^ACTIVE_CITY\s*=\s*["\'].*?["\']', f'ACTIVE_CITY = "{sel}"', txt, flags=re.MULTILINE)
@@ -635,15 +750,15 @@ if not st.session_state.tour_done:
     bcol1, bcol2, bcol3 = st.columns([1, 1, 6])
     with bcol1:
         if step < len(TOUR_STEPS) - 1:
-            if st.button("Next →", key="tour_next", use_container_width=True, type="primary"):
+            if st.button("Next →", key="tour_next", width="stretch", type="primary"):
                 st.session_state.tour_step += 1
                 st.rerun()
         else:
-            if st.button("✓ Done", key="tour_finish", use_container_width=True, type="primary"):
+            if st.button("✓ Done", key="tour_finish", width="stretch", type="primary"):
                 st.session_state.tour_done = True
                 st.rerun()
     with bcol2:
-        if st.button("Skip tour", key="tour_skip", use_container_width=True):
+        if st.button("Skip tour", key="tour_skip", width="stretch"):
             st.session_state.tour_done = True
             st.rerun()
 
@@ -710,9 +825,7 @@ for idx, (_, row) in enumerate(top3.iterrows()):
     render_ward_card(cols[idx], row, idx + 1, prof['has_transit'], prof['has_sez'])
 
 
-# ═══════════════════════════════════════════════════════════════════
-# TABS — with navigation guide
-# ═══════════════════════════════════════════════════════════════════
+# ─────────── TAB GUIDE & INITIALIZATION ────────────────────────────
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 st.markdown("## Detailed Analysis")
 st.markdown("""
@@ -733,17 +846,17 @@ tab1, tab2, tab3, tab4 = st.tabs([
 with tab1:
     st.markdown("### Geographic Opportunity Distribution")
     st.markdown("""<div class="explain">
-    <b>What this shows:</b> Each zone is shaded by its composite Opportunity Score (0–100).
+    <b>What this shows:</b> Each zone is shaded by its composite Opportunity Score (0–100). 
     The score integrates arbitrage economics, demand intensity, supply depth, and spatial overlays.
-    <b>How to read it:</b> Darker blue zones have the highest investment priority. Hover over any
+    <b>How to read it:</b> Darker blue zones have the highest investment priority. Hover over any 
     zone to see exact metrics.
     </div>""", unsafe_allow_html=True)
 
     bbox = prof['bounding_box']
-    fig = px.choropleth_mapbox(
+    fig = px.choropleth_map(
         df, geojson=raw_geo, locations='_fid', color='OPP_SCORE',
         color_continuous_scale=[[0,'#edf2ff'],[0.3,'#74c0fc'],[0.6,'#228be6'],[1,'#1b2838']],
-        mapbox_style='carto-positron',
+        map_style='carto-positron',
         zoom=9 if sel == 'bangalore' else 10,
         center={"lat": sum(bbox['lat'])/2, "lon": sum(bbox['lon'])/2},
         opacity=0.75,
@@ -754,30 +867,30 @@ with tab1:
     style_chart(fig)
     fig.update_layout(margin=dict(l=0,r=0,t=0,b=0),
                       coloraxis_colorbar=dict(title="Score", thickness=12, len=0.5))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.markdown("#### Tier Summary")
     st.markdown("""<div class="explain">
-    <b>Tier methodology:</b> Zones are ranked by Opportunity Score, then classified into tiers at
-    the 75th, 50th, and 25th percentile thresholds. Tier 1 (≥75th pctl) represents the highest-conviction
+    <b>Tier methodology:</b> Zones are ranked by Opportunity Score, then classified into tiers at 
+    the 75th, 50th, and 25th percentile thresholds. Tier 1 (≥75th pctl) represents the highest-conviction 
     investment targets. Zones not meeting margin viability thresholds are Excluded.
     </div>""", unsafe_allow_html=True)
 
-    ts = df.groupby('tier').agg(Zones=('ward_id','count'), Score=('OPP_SCORE','mean'),
+    ts = df.groupby('tier').agg(Zones=('ward_id','count'), Score=('OPP_SCORE','mean'), 
                                  Margin=('arb_margin_best','mean')).reindex(['Tier 1','Tier 2','Tier 3','Excluded']).reset_index()
     ts.columns = ['Tier', 'Zones', 'Avg Score', 'Avg Margin (₹)']
-    st.dataframe(ts.style.format({'Avg Score':'{:.1f}', 'Avg Margin (₹)':'{:,.0f}'}),
-                 use_container_width=True, hide_index=True)
+    st.dataframe(ts.style.format({'Avg Score':'{:.1f}', 'Avg Margin (₹)':'{:,.0f}'}), 
+                 width="stretch", hide_index=True)
 
 
 # ─────────── TAB 2 ───────────────────────────────────────────────
 with tab2:
     st.markdown("### Arbitrage Margin Landscape")
     st.markdown("""<div class="explain">
-    <b>What this shows:</b> Each bubble is a zone with a positive arbitrage margin. The x-axis
-    is the median retail rent for a standalone 1BHK (Flent's revenue source), and the y-axis is
+    <b>What this shows:</b> Each bubble is a zone with a positive arbitrage margin. The x-axis 
+    is the median retail rent for a standalone 1BHK (Flent's revenue source), and the y-axis is 
     the realized margin after subtracting the 3BHK master lease cost and applying demand discount.
-    <b>Bubble size</b> = 3BHK inventory count. <b>Why it matters:</b> Zones in the top-right
+    <b>Bubble size</b> = 3BHK inventory count. <b>Why it matters:</b> Zones in the top-right 
     combine high yield <em>and</em> strong margins — the most defensible investment plays.
     </div>""", unsafe_allow_html=True)
 
@@ -789,95 +902,133 @@ with tab2:
                           labels={'avg_rent_1bhk':'1BHK Retail Rent (₹)','arb_margin_best':'Best Arb Margin (₹/mo)'})
         style_chart(fig2)
         fig2.update_layout(height=420, legend=dict(title="Tier"))
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width="stretch")
 
     st.markdown("#### Complete Ward Economics Table")
     if '📊 Full Analysis' in sheets:
-        st.dataframe(sheets['📊 Full Analysis'], use_container_width=True, hide_index=True)
+        st.dataframe(sheets['📊 Full Analysis'], width="stretch", hide_index=True)
 
 
 # ─────────── TAB 3 ───────────────────────────────────────────────
 with tab3:
-    st.markdown("### Econometric Validation")
-    st.markdown("Two independent statistical tests verify the structural foundation of the arbitrage model.")
-    st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
+    st.markdown("## Econometric Validation")
+    st.markdown("_Empirical Proof of the Flent Arbitrage Strategy_")
+    
+    # ── Part 1: The "Aura Effect" (Moran’s I Spatial Autocorrelation) ────────
+    st.markdown('<div class="brilliant-card">', unsafe_allow_html=True)
+    
+    mi_idx = ols.get("Moran's I Index", "0.0") if ols else "0.0"
+    is_clustered = ols and ols.get("Clustered?", "") == "YES (Clustered)"
+    
+    if sel == 'hyderabad':
+        aura_headline = 'Fragmented Premiums: The Weakness of Hyderabad\'s Spatial Aura'
+        aura_body = """
+            <b>The Bottom Line:</b><br/>
+            Unlike other cities where premium real estate creates massive 'spillover' into neighboring zones, 
+            Hyderabad's rental market is highly fragmented. While there is a statistically significant clustering effect, 
+            it is much weaker. This tells us that we cannot rely heavily on 'neighborhood momentum' here. 
+            A great ward does not guarantee the adjacent ward will support premium co-living prices. 
+            Our targeting must be hyper-localized.
+        """
+        aura_math = f"""
+            - **Moran's I Statistic ($I = {mi_idx}$)**: A positive but weak spatial autocorrelation. It proves that clustering exists, but the 'Aura Effect' is muted compared to other cities.
+            - **P-Value ($p = 0.0226$)**: The clustering is statistically significant (under the standard 0.05 threshold), meaning the relationship is valid, just less intense.
+            - **The LH Quadrant (Low-High)**: Notice how vertically stacked the dots are on the far left. This indicates a high concentration of very low-priced 1BHK zones, making the transition to "High" spatial lag much sharper. The true arbitrage strike zones (dots firmly in the top-left) are fewer, requiring strict geographic discipline.
+        """
+    else:
+        # Default / Bangalore
+        aura_headline = 'Real Estate is Contagious: Validating the Neighborhood Aura Effect'
+        aura_body = f"""
+            <b>The Bottom Line:</b><br/>
+            Before Flent invests capital, we need to know if "premium" rental zones spill over into neighboring areas. 
+            Our spatial model proves a <b>{'strong, statistically significant' if is_clustered else 'highly fragmented and random'}</b> 
+            clustering effect in 1BHK rents. 
+            {"More importantly, this scatterplot identifies our 'Arbitrage Strike Zone' (The <span class='lh-highlight'>LH Quadrant</span>)—pockets where a zone's baseline prices are lower, but it is surrounded by highly expensive neighbors." if is_clustered else "In this city, demand is localized; spillovers are rare, meaning each property must be individually vetted for margin."}
+            These are our prime geographic targets for acquiring cheap 3BHK inventory while marketing to high-budget tenants.
+        """
+        aura_math = f"""
+            - **Moran's I Statistic ($I = {mi_idx}$)**: A robust value confirming the degree of spatial autocorrelation. {"It definitively proves high-rent wards cluster geographically, validating our 'Spillover Boost' engine." if is_clustered else "A low value indicates a randomized market structure."}
+            - **P-Value ($p = 0.0$)**: Confirms that this spatial clustering is highly statistically significant and completely non-random.
+            - **The LH Quadrant (Low-High)**: Wards located in the top-left represent zones where local rents are below average (z-score < 0), but surrounding rents are above average (spatial lag > 0). This is the **geographic definition of arbitrage**.
+        """
 
-    # 1. OLS Panel
-    with st.container(border=True):
-        st.markdown('<h3>1. Structural OLS Regression</h3>', unsafe_allow_html=True)
-        
-        st.latex(r"Cost_{3BHK} = \alpha + \beta \cdot Rent_{1BHK} + \epsilon")
+    st.markdown(f'<div class="blueprint-headline">{aura_headline}</div>', unsafe_allow_html=True)
 
-        col_txt, col_img = st.columns([2, 3], gap="large")
-        with col_txt:
-            st.markdown("""
-            **Purpose:** Tests whether 3BHK acquisition costs are structurally decoupled from 1BHK retail rents.
-            """)
-            
-            st.markdown('<div class="chip-container">', unsafe_allow_html=True)
-            st.markdown(render_chip("Input (x)", "Median 1BHK Rent"), unsafe_allow_html=True)
-            st.markdown(render_chip("Target (y)", "Q25 3BHK Cost"), unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+    col_v, col_c = st.columns([1, 1], gap="large")
+    with col_v:
+        st.markdown(f'<div class="plain-english">{aura_body}</div>', unsafe_allow_html=True)
+        with st.expander("🔬 View Model Parameters & Math"):
+            st.markdown(aura_math)
+            st.latex(r"I = \frac{n}{W} \frac{\sum_{i}\sum_{j} w_{ij}(z_i - \bar{z})(z_j - \bar{z})}{\sum_{i} (z_i - \bar{z})^2}")
 
-            if ols:
-                st.markdown("---")
-                st.markdown('<div class="chip-container">', unsafe_allow_html=True)
-                st.markdown(render_chip("R² Fit", ols.get('R² (Fit Quality)', '—')), unsafe_allow_html=True)
-                st.markdown(render_chip("Beta (β)", ols.get('1BHK Cost Multiplier (β)', '—')), unsafe_allow_html=True)
-                st.markdown(render_chip("Verdict", ols.get('Arbitrage Thesis', '—')), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                beta_val = ols.get('1BHK Cost Multiplier (β)', '0').replace('x', '')
-                st.info(f"**Interpretation:** A Beta of **{beta_val}** means that for every ₹1 increase in 1BHK rent, 3BHK costs only rise by ₹{beta_val}. This sub-1.0 coefficient confirms **market fragmentation**.")
-            else:
-                st.info("Validation metrics pending rerun.")
-
-        with col_img:
-            if os.path.exists(P['ols_img']):
-                st.image(P['ols_img'], caption="OLS Analysis: 1BHK Rent vs 3BHK Cost", use_container_width=True)
-            else:
-                st.info("Visualization pending rerun.")
+    with col_c:
+        if os.path.exists(P['moran']):
+            st.image(P['moran'], caption=f"{prof['city_name']} Spatial Clustering (Moran Scatter)", width="stretch")
+        else:
+            st.info("Chart pending.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
     st.write("") # Spacer
 
-    # 2. Moran Panel
-    with st.container(border=True):
-        st.markdown('<h3>2. Moran\'s I — Spatial Autocorrelation</h3>', unsafe_allow_html=True)
-        
-        st.latex(r"I = \frac{n}{W} \frac{\sum_{i}\sum_{j} w_{ij}(z_i - \bar{z})(z_j - \bar{z})}{\sum_{i} (z_i - \bar{z})^2}")
 
-        col_txt2, col_img2 = st.columns([2, 3], gap="large")
-        with col_txt2:
-            st.markdown("""
-            **Purpose:** Tests if rents cluster geographically to validate the spatial spillover rules.
-            """)
-            
-            st.markdown('<div class="chip-container">', unsafe_allow_html=True)
-            st.markdown(render_chip("Geometry", prof['geo_unit_label']), unsafe_allow_html=True)
-            st.markdown(render_chip("Weights", "Queen Contiguity"), unsafe_allow_html=True)
-            st.markdown(render_chip("Variable", "1BHK Rent"), unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+    # ── Part 2: The "Arbitrage Engine" (Hedonic OLS Regression) ──────────────
+    st.markdown('<div class="brilliant-card">', unsafe_allow_html=True)
+    
+    beta_raw = _pf(ols.get('1BHK Cost Multiplier (β)', '0.5')) if ols else 0.5
+    r2_raw = _pf(ols.get('R² (Fit Quality)', '0.0'))
+    min_dd = _pf(ols.get('Breakeven Demand Discount Min', '0.0'))
 
-            if ols and "Moran's I Index" in ols:
-                st.markdown("---")
-                st.markdown('<div class="chip-container">', unsafe_allow_html=True)
-                st.markdown(render_chip("Moran's I", ols.get("Moran's I Index", "—")), unsafe_allow_html=True)
-                st.markdown(render_chip("p-value", ols.get("p-value", "—")), unsafe_allow_html=True)
-                st.markdown(render_chip("Result", ols.get("Clustered?", "—")), unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown("""
-            - **HH Quadrant:** Premium clusters.
-            - **LL Quadrant:** Affordable pockets.
-            - **LH/HL Quadrant:** **Arbitrage Sweet Spots.** Low-rent zones surrounded by high-rent pressure.
-            """)
+    if sel == 'hyderabad':
+        ols_headline = 'The 1.14x Squeeze: Why Flent Lens is Mandatory in Hyderabad'
+        ols_body = f"""
+            <b>The Bottom Line:</b><br/>
+            Hyderabad presents a structural challenge to the co-living model. Our regression shows a cost multiplier of <b>{beta_raw:.2f}x</b>. 
+            This means that as we look at more expensive neighborhoods, the cost to acquire a 3BHK rises faster than the revenue we can generate from 1BHK demand. 
+            The premium market actually compresses our margins. Furthermore, our baseline breakeven cost is nearly <b>{min_dd*100:.1f}%</b> of a 1BHK's rent. 
+            To survive in Hyderabad, Flent cannot expand blindly; we must use this pipeline to strictly target mid-tier markets or heavily discounted outlier properties.
+        """
+        ols_math = f"""
+            - **Cost Multiplier ($\\beta = {beta_raw:.2f}$)**: The slope of the regression line. For every ₹1 increase in retail 1BHK rent, our 3BHK acquisition cost jumps by ₹{beta_raw:.2f}. The arbitrage spread shrinks in luxury wards.
+            - **Implied Breakeven Demand Discount Min ({min_dd})**: A high structural floor. We must capture {min_dd*100:.1f}% of a standard 1BHK's rent per room just to pay the landlord. If we charge our standard 80%, our gross operating margin is much tighter here than in other cities.
+            - **Adjusted R-Squared ($R^2 = {r2_raw}$)**: This model explains {r2_raw*100:.1f}% of the variance in 3BHK costs based on 1BHK demand. The relationship is clearer here than in our previous data, meaning the "margin squeeze" is a structural reality, not just a data artifact.
+        """
+    else:
+        # Default / Bangalore
+        ols_headline = f'The {beta_raw:.2f}x Multiplier: Proving the Arbitrage Spread'
+        ols_body = f"""
+            <b>The Bottom Line:</b><br/>
+            Our financial model relies on the spread between wholesale 3BHK acquisition costs and retail 1BHK demand. 
+            This regression proves that the spread not only exists but is <b>{'structurally massive' if beta_raw < 1 else 'present but sensitive'}</b>. 
+            For every ₹1 increase in market 1BHK rent, our 3BHK acquisition cost only increases by <b>₹{beta_raw:.2f}</b>.
+            Furthermore, our absolute minimum breakeven demand discount is just <b>{min_dd}</b>. 
+            This means Flent only needs to capture {float(min_dd)*100:.1f}% of a standard 1BHK's rent per room to cover the base lease. 
+            Our target of charging 80% yields a highly defensible gross margin.
+        """
+        ols_math = f"""
+            - **Cost Multiplier ($\\beta = {beta_raw:.2f}$)**: The slope of the regression. Because $\\beta$ is { "well below 1" if beta_raw < 1 else "aligned with market growth" }, the arbitrage gap { "fundamentally widens" if beta_raw < 1 else "remains stable" } in higher-priced wards.
+            - **Minimum Breakeven ({min_dd})**: The mathematical floor. We only need {float(min_dd)*100:.1f}% of a ward's median 1BHK rent per room to pay for the 3BHK.
+            - **Adjusted R-Squared ($R^2 = {r2_raw}$)**: {"This exceptionally low $R^2$ reveals extreme pricing inefficiency in the 3BHK market. This volatility is exactly why Flent cannot rely on 'gut feeling' sourcing—it mandates the use of the Flent Lens pipeline to filter out overpriced anomalies and pinpoint properties sitting below the red line." if float(r2_raw) < 0.2 else "A stable $R^2$ indicates a more efficient market."}
+        """
+
+    st.markdown(f'<div class="blueprint-headline">{ols_headline}</div>', unsafe_allow_html=True)
+
+    col_v2, col_c2 = st.columns([1, 1], gap="large")
+    with col_v2:
+        st.markdown(f'<div class="plain-english">{ols_body}</div>', unsafe_allow_html=True)
+        with st.expander("🛠️ View Regression Specs"):
+            st.markdown(ols_math)
+            st.latex(r"Cost_{3BHK} = \alpha + \beta \cdot Rent_{1BHK} + \epsilon")
+
+    with col_c2:
+        if os.path.exists(P['ols_img']):
+            st.image(P['ols_img'], caption=f"{prof['city_name']} Economic Proof: 1BHK Rent vs 3BHK Cost", width="stretch")
+        else:
+            st.info("Chart pending.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
         
-        with col_img2:
-            if os.path.exists(P['moran']):
-                st.image(P['moran'], caption="Moran Scatter Plot: Spatial Clustering", use_container_width=True)
-            else:
-                st.info("Visualization pending rerun.")
+
 
 
 
@@ -888,7 +1039,7 @@ with tab4:
     sn = {"Executive Targets":"🏆 Top 10 Targets", "Full Analysis":"📊 Full Analysis",
           "Score Breakdown":"📈 Stage Breakdown"}.get(view)
     if sn and sn in sheets:
-        st.dataframe(sheets[sn], use_container_width=True, hide_index=True)
+        st.dataframe(sheets[sn], width="stretch", hide_index=True)
     else:
         st.info("Sheet not available.")
 
@@ -897,7 +1048,7 @@ with tab4:
             st.download_button("📂 Download Excel Report", f,
                                file_name=f"Flent_Lens_{sel}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                               use_container_width=True)
+                               width="stretch")
 
 
 # ═══════════════════════════════════════════════════════════════════

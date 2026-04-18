@@ -1,362 +1,362 @@
-ward_id,ward_name
-1,BBMP Ward 1
-2,BBMP Ward 2
-3,BBMP Ward 3
-4,BBMP Ward 4
-5,BBMP Ward 5
-6,BBMP Ward 6
-7,BBMP Ward 7
-8,BBMP Ward 8
-9,BBMP Ward 9
-10,BBMP Ward 10
-11,BBMP Ward 11
-12,BBMP Ward 12
-13,BBMP Ward 13
-14,BBMP Ward 14
-15,BBMP Ward 15
-16,BBMP Ward 16
-17,BBMP Ward 17
-18,BBMP Ward 18
-19,BBMP Ward 19
-20,BBMP Ward 20
-21,BBMP Ward 21
-22,BBMP Ward 22
-23,BBMP Ward 23
-24,BBMP Ward 24
-25,BBMP Ward 25
-26,BBMP Ward 26
-27,BBMP Ward 27
-28,BBMP Ward 28
-29,BBMP Ward 29
-30,BBMP Ward 30
-31,BBMP Ward 31
-32,BBMP Ward 32
-33,BBMP Ward 33
-34,BBMP Ward 34
-35,BBMP Ward 35
-36,BBMP Ward 36
-37,BBMP Ward 37
-38,BBMP Ward 38
-39,BBMP Ward 39
-40,BBMP Ward 40
-41,BBMP Ward 41
-42,BBMP Ward 42
-43,BBMP Ward 43
-44,BBMP Ward 44
-45,BBMP Ward 45
-46,BBMP Ward 46
-47,BBMP Ward 47
-48,BBMP Ward 48
-49,BBMP Ward 49
-50,BBMP Ward 50
-51,BBMP Ward 51
-52,BBMP Ward 52
-53,BBMP Ward 53
-54,BBMP Ward 54
-55,BBMP Ward 55
-56,BBMP Ward 56
-57,BBMP Ward 57
-58,BBMP Ward 58
-59,BBMP Ward 59
-60,BBMP Ward 60
-61,BBMP Ward 61
-62,BBMP Ward 62
-63,BBMP Ward 63
-64,BBMP Ward 64
-65,BBMP Ward 65
-66,BBMP Ward 66
-67,BBMP Ward 67
-68,BBMP Ward 68
-69,BBMP Ward 69
-70,BBMP Ward 70
-71,BBMP Ward 71
-72,BBMP Ward 72
-73,BBMP Ward 73
-74,BBMP Ward 74
-75,BBMP Ward 75
-76,BBMP Ward 76
-77,BBMP Ward 77
-78,BBMP Ward 78
-79,BBMP Ward 79
-80,BBMP Ward 80
-81,BBMP Ward 81
-82,BBMP Ward 82
-83,BBMP Ward 83
-84,BBMP Ward 84
-85,BBMP Ward 85
-86,BBMP Ward 86
-87,BBMP Ward 87
-88,BBMP Ward 88
-89,BBMP Ward 89
-90,BBMP Ward 90
-91,BBMP Ward 91
-92,BBMP Ward 92
-93,BBMP Ward 93
-94,BBMP Ward 94
-95,BBMP Ward 95
-96,BBMP Ward 96
-97,BBMP Ward 97
-98,BBMP Ward 98
-99,BBMP Ward 99
-100,BBMP Ward 100
-101,BBMP Ward 101
-102,BBMP Ward 102
-103,BBMP Ward 103
-104,BBMP Ward 104
-105,BBMP Ward 105
-106,BBMP Ward 106
-107,BBMP Ward 107
-108,BBMP Ward 108
-109,BBMP Ward 109
-110,BBMP Ward 110
-111,BBMP Ward 111
-112,BBMP Ward 112
-113,BBMP Ward 113
-114,BBMP Ward 114
-115,BBMP Ward 115
-116,BBMP Ward 116
-117,BBMP Ward 117
-118,BBMP Ward 118
-119,BBMP Ward 119
-120,BBMP Ward 120
-121,BBMP Ward 121
-122,BBMP Ward 122
-123,BBMP Ward 123
-124,BBMP Ward 124
-125,BBMP Ward 125
-126,BBMP Ward 126
-127,BBMP Ward 127
-128,BBMP Ward 128
-129,BBMP Ward 129
-130,BBMP Ward 130
-131,BBMP Ward 131
-132,BBMP Ward 132
-133,BBMP Ward 133
-134,BBMP Ward 134
-135,BBMP Ward 135
-136,BBMP Ward 136
-137,BBMP Ward 137
-138,BBMP Ward 138
-139,BBMP Ward 139
-140,BBMP Ward 140
-141,BBMP Ward 141
-142,BBMP Ward 142
-143,BBMP Ward 143
-144,BBMP Ward 144
-145,BBMP Ward 145
-146,BBMP Ward 146
-147,BBMP Ward 147
-148,BBMP Ward 148
-149,BBMP Ward 149
-150,BBMP Ward 150
-151,BBMP Ward 151
-152,BBMP Ward 152
-153,BBMP Ward 153
-154,BBMP Ward 154
-155,BBMP Ward 155
-156,BBMP Ward 156
-157,BBMP Ward 157
-158,BBMP Ward 158
-159,BBMP Ward 159
-160,BBMP Ward 160
-161,BBMP Ward 161
-162,BBMP Ward 162
-163,BBMP Ward 163
-164,BBMP Ward 164
-165,BBMP Ward 165
-166,BBMP Ward 166
-167,BBMP Ward 167
-168,BBMP Ward 168
-169,BBMP Ward 169
-170,BBMP Ward 170
-171,BBMP Ward 171
-172,BBMP Ward 172
-173,BBMP Ward 173
-174,BBMP Ward 174
-175,BBMP Ward 175
-176,BBMP Ward 176
-177,BBMP Ward 177
-178,BBMP Ward 178
-179,BBMP Ward 179
-180,BBMP Ward 180
-181,BBMP Ward 181
-182,BBMP Ward 182
-183,BBMP Ward 183
-184,BBMP Ward 184
-185,BBMP Ward 185
-186,BBMP Ward 186
-187,BBMP Ward 187
-188,BBMP Ward 188
-189,BBMP Ward 189
-190,BBMP Ward 190
-191,BBMP Ward 191
-192,BBMP Ward 192
-193,BBMP Ward 193
-194,BBMP Ward 194
-195,BBMP Ward 195
-196,BBMP Ward 196
-197,BBMP Ward 197
-198,BBMP Ward 198
-199,BBMP Ward 199
-200,BBMP Ward 200
-201,BBMP Ward 201
-202,BBMP Ward 202
-203,BBMP Ward 203
-204,BBMP Ward 204
-205,BBMP Ward 205
-206,BBMP Ward 206
-207,BBMP Ward 207
-208,BBMP Ward 208
-209,BBMP Ward 209
-210,BBMP Ward 210
-211,BBMP Ward 211
-212,BBMP Ward 212
-213,BBMP Ward 213
-214,BBMP Ward 214
-215,BBMP Ward 215
-216,BBMP Ward 216
-217,BBMP Ward 217
-218,BBMP Ward 218
-219,BBMP Ward 219
-220,BBMP Ward 220
-221,BBMP Ward 221
-222,BBMP Ward 222
-223,BBMP Ward 223
-224,BBMP Ward 224
-225,BBMP Ward 225
-226,BBMP Ward 226
-227,BBMP Ward 227
-228,BBMP Ward 228
-229,BBMP Ward 229
-230,BBMP Ward 230
-231,BBMP Ward 231
-232,BBMP Ward 232
-233,BBMP Ward 233
-234,BBMP Ward 234
-235,BBMP Ward 235
-236,BBMP Ward 236
-237,BBMP Ward 237
-238,BBMP Ward 238
-239,BBMP Ward 239
-240,BBMP Ward 240
-241,BBMP Ward 241
-242,BBMP Ward 242
-243,BBMP Ward 243
-244,BBMP Ward 244
-245,BBMP Ward 245
-246,BBMP Ward 246
-247,BBMP Ward 247
-248,BBMP Ward 248
-249,BBMP Ward 249
-250,BBMP Ward 250
-251,BBMP Ward 251
-252,BBMP Ward 252
-253,BBMP Ward 253
-254,BBMP Ward 254
-255,BBMP Ward 255
-256,BBMP Ward 256
-257,BBMP Ward 257
-258,BBMP Ward 258
-259,BBMP Ward 259
-260,BBMP Ward 260
-261,BBMP Ward 261
-262,BBMP Ward 262
-263,BBMP Ward 263
-264,BBMP Ward 264
-265,BBMP Ward 265
-266,BBMP Ward 266
-267,BBMP Ward 267
-268,BBMP Ward 268
-269,BBMP Ward 269
-270,BBMP Ward 270
-271,BBMP Ward 271
-272,BBMP Ward 272
-273,BBMP Ward 273
-274,BBMP Ward 274
-275,BBMP Ward 275
-276,BBMP Ward 276
-277,BBMP Ward 277
-278,BBMP Ward 278
-279,BBMP Ward 279
-280,BBMP Ward 280
-281,BBMP Ward 281
-282,BBMP Ward 282
-283,BBMP Ward 283
-284,BBMP Ward 284
-285,BBMP Ward 285
-286,BBMP Ward 286
-287,BBMP Ward 287
-288,BBMP Ward 288
-289,BBMP Ward 289
-290,BBMP Ward 290
-291,BBMP Ward 291
-292,BBMP Ward 292
-293,BBMP Ward 293
-294,BBMP Ward 294
-295,BBMP Ward 295
-296,BBMP Ward 296
-297,BBMP Ward 297
-298,BBMP Ward 298
-299,BBMP Ward 299
-300,BBMP Ward 300
-301,BBMP Ward 301
-302,BBMP Ward 302
-303,BBMP Ward 303
-304,BBMP Ward 304
-305,BBMP Ward 305
-306,BBMP Ward 306
-307,BBMP Ward 307
-308,BBMP Ward 308
-309,BBMP Ward 309
-310,BBMP Ward 310
-311,BBMP Ward 311
-312,BBMP Ward 312
-313,BBMP Ward 313
-314,BBMP Ward 314
-315,BBMP Ward 315
-316,BBMP Ward 316
-317,BBMP Ward 317
-318,BBMP Ward 318
-319,BBMP Ward 319
-320,BBMP Ward 320
-321,BBMP Ward 321
-322,BBMP Ward 322
-323,BBMP Ward 323
-324,BBMP Ward 324
-325,BBMP Ward 325
-326,BBMP Ward 326
-327,BBMP Ward 327
-328,BBMP Ward 328
-329,BBMP Ward 329
-330,BBMP Ward 330
-331,BBMP Ward 331
-332,BBMP Ward 332
-333,BBMP Ward 333
-334,BBMP Ward 334
-335,BBMP Ward 335
-336,BBMP Ward 336
-337,BBMP Ward 337
-338,BBMP Ward 338
-339,BBMP Ward 339
-340,BBMP Ward 340
-341,BBMP Ward 341
-342,BBMP Ward 342
-343,BBMP Ward 343
-344,BBMP Ward 344
-345,BBMP Ward 345
-346,BBMP Ward 346
-347,BBMP Ward 347
-348,BBMP Ward 348
-349,BBMP Ward 349
-350,BBMP Ward 350
-351,BBMP Ward 351
-352,BBMP Ward 352
-353,BBMP Ward 353
-354,BBMP Ward 354
-355,BBMP Ward 355
-356,BBMP Ward 356
-357,BBMP Ward 357
-358,BBMP Ward 358
-359,BBMP Ward 359
-360,BBMP Ward 360
-361,BBMP Ward 361
+ward_id,ward_name,zone_name
+1,Vinayaka Layout,Rajarajeshwarinagar
+2,Aerocity,Yelahanka
+3,Chowdeshwari ward,Yelahanka
+17,Ramamurthy Nagara,K.R. Pura
+4,Nagashettyhalli,Yelahanka
+5,Kogilu,Byatarayanapura
+6,Yamalur,Mahadevapura
+7,Agaram,C.V. Raman Nagar
+8,Dasarahalli,Yelahanka
+67,Old Baiyappanahalli,C.V. Raman Nagar
+9,Kotthur,K.R. Pura
+10,Bagalagunte,Yelahanka
+20,Subbayanapalya,Byatarayanapura
+11,Mallasandra,Yelahanka
+12,Manjunatha Nagar,Yelahanka
+21,Kadirenahalli,Jayanagar
+13,Jalahalli,Yelahanka
+14,K.R Pura,K.R. Pura
+25,Gottigere,Jayanagar
+15,Beguru,Jayanagar
+16,V.V Puram,Gandhinagara
+129,Kammanahalli,Byatarayanapura
+19,Tilak Nagara,Jayanagar
+23,J.P PARK,Yelahanka
+24,Old Guddadahalli,Gandhinagara
+26,Babusab Palya,K.R. Pura
+27,Banashankari Temple Ward,Jayanagar
+28,Nele Maheshwaramma Temple Ward,Yelahanka
+48,Marathahalli,Mahadevapura
+29,Konanakunte,Jayanagar
+30,Marenahalli South,Jayanagar
+31,Harinagar,Jayanagar
+32,Horamavu,K.R. Pura
+33,Dinnur,Yelahanka
+54,L.B Shastri Nagar,K.R. Pura
+34,Kammagondanahalli,Yelahanka
+35,Abdul Kalam Nagar,Jayanagar
+130,Kushal Nagar,Byatarayanapura
+36,Krishnanagar,K.R. Pura
+212,Yarab nagar,Jayanagar
+38,RBI Layout,Jayanagar
+39,K Narayanapura,K.R. Pura
+40,Hagaduru,Mahadevapura
+41,Krishnaiahnapalya,C.V. Raman Nagar
+42,Padmanabhanagara,Jayanagar
+106,Vasanthapura,Jayanagar
+43,Gowdanapalya,Jayanagar
+44,Okalipuram,Gandhinagara
+45,Kane Muneshwara Ward,Jayanagar
+46,Hoysala Nagara Central,C.V. Raman Nagar
+47,Talagattapura,Jayanagar
+49,Sarvabhouma Nagar,Jayanagar
+131,Govindapura,Byatarayanapura
+50,Rayapuram,Gandhinagara
+51,Anjanapura,Jayanagar
+52,Vijaya Bank Layout,Bommanahalli
+53,Periyar Nagar,Byatarayanapura
+55,Padarayanapura,Gandhinagara
+64,Yelachenahalli,Jayanagar
+56,Geddalahalli,Yelahanka
+57,Subramanyapura,Jayanagar
+58,Goraguntepalya,Rajarajeshwarinagar
+59,Kottegepalya,Rajarajeshwarinagar
+60,Brundavana Nagara,Yelahanka
+61,Yelahanka Satellite Town,Yelahanka
+62,Bangarappa Nagara,Rajarajeshwarinagar
+63,Uttarahalli,Jayanagar
+66,Yeshwanthpura,Yelahanka
+65,Yelenahalli,Jayanagar
+68,Kaggadasapura,C.V. Raman Nagar
+71,Doddakammanahalli,Jayanagar
+72,Byrathi,Mahadevapura
+69,Kothanur,Jayanagar
+73,K.S. Nissar Ahmed Ward,K.R. Pura
+70,Bhoopasandra,Yelahanka
+74,Shakambarinagara,Jayanagar
+75,Hebbal,Yelahanka
+76,Vishwanatha Nagenahalli,Yelahanka
+77,Sampangirama Nagar,Gandhinagara
+83,Basavanapura,K.R. Pura
+78,Vishwapriya Nagara,Jayanagar
+79,Halasuru,Gandhinagara
+80,Naganathapura,Jayanagar
+92,Aramane Nagara,Malleshwaram
+81,Kasturi Nagar,C.V. Raman Nagar
+82,Nagarbhavi,Malleshwaram
+224,Munnenkolalu,Mahadevapura
+84,Chikkathoguru,Jayanagar
+85,Doddabettahalli,Yelahanka
+86,Ganganagar,Yelahanka
+250,Vijinapura,K.R. Pura
+87,Kasturbha Nagar,Gandhinagara
+94,Raja Kempegowda ward,Yelahanka
+88,Jayanagar East,Jayanagar
+89,Dharmaraya Swamy Temple Ward,Gandhinagara
+90,Kanakanapalya,Gandhinagara
+91,Swatantra Palya Ward,Gandhinagara
+93,Gangenahalli,Yelahanka
+95,J.P Nagar,Jayanagar
+172,N.A.L Layout,Jayanagar
+96,Sri Lakshmi Devi Ward,Bommanahalli
+97,Nyayanga Badavane,Yelahanka
+98,Abbigere,Yelahanka
+99,Viswamanava Kuvempu Ward,Bommanahalli
+100,Priyadarshini Ward,Mahadevapura
+101,Shettihalli,Yelahanka
+102,Chikka Adugodi,Bommanahalli
+103,Attur,Yelahanka
+104,New Tavarekere,Bommanahalli
+105,Iblur,Bommanahalli
+107,HMT Ward,Yelahanka
+108,Manorayanapalya,Yelahanka
+116,Garvebavi Palya,Bommanahalli
+109,Kudlu,Bommanahalli
+110,National Games Village,Bommanahalli
+132,Amruthahalli,Byatarayanapura
+111,S.G Palya,Bommanahalli
+133,Banaswadi,Byatarayanapura
+112,Someshwara Nagara,Gandhinagara
+117,Pattabhirama Nagara,Jayanagar
+113,Jaya Chamarajendra Nagara,Yelahanka
+120,Agara,Bommanahalli
+114,Lakkasandra,Bommanahalli
+125,Kodigehalli,Byatarayanapura
+118,Lakshmi Devi Nagar,Rajarajeshwarinagar
+126,Jeevanahalli,Byatarayanapura
+119,Kasavanahalli,Bommanahalli
+127,Kaval Byrasandra,Byatarayanapura
+121,N.S Palya,Bommanahalli
+122,Puttenahalli,Bommanahalli
+123,Doresanipalya,Bommanahalli
+128,Aruna Asif Ali Ward,Byatarayanapura
+124,R.T Nagar,Yelahanka
+134,Pulakeshi Nagar,Byatarayanapura
+137,Byatarayanapura,Byatarayanapura
+135,Kormangala East,Bommanahalli
+141,Sagayapuram,Byatarayanapura
+136,HBR Layout,Byatarayanapura
+138,S.K Garden,Byatarayanapura
+146,Rajiv Gandhi Nagar,Byatarayanapura
+139,Venkateshpuram,Byatarayanapura
+140,Maruthi Seva Nagara,Byatarayanapura
+142,JJR Nagara,Gandhinagara
+158,Hongasandra,Bommanahalli
+143,Singasandra,Bommanahalli
+144,Bandepalya,Bommanahalli
+145,Shampura,Byatarayanapura
+159,Nagavara,Byatarayanapura
+147,Hennur,Byatarayanapura
+160,D.V Gundappa Ward,Gandhinagara
+148,Ejipura,Bommanahalli
+149,Doddanna Nagar,Byatarayanapura
+150,Singapura,Byatarayanapura
+161,Cox Town,C.V. Raman Nagar
+151,HSR Layout,Bommanahalli
+164,Manjunath Nagara,Malleshwaram
+152,Vidyaranyapura,Byatarayanapura
+154,Bilekahalli,Bommanahalli
+155,Lingarajpura,Byatarayanapura
+156,HRBR Layout,Byatarayanapura
+157,Kacharakanahalli,Byatarayanapura
+162,Vinayakanagar,C.V. Raman Nagar
+165,Sane Guruvana Halli,Malleshwaram
+191,Jaraganahalli,Bommanahalli
+166,Maruthi Mandira Ward,Malleshwaram
+167,Thimmenahalli,Malleshwaram
+168,Shanthinagar,C.V. Raman Nagar
+169,Kormangala West,Bommanahalli
+170,Kengal Hanumanthaiah South,Bommanahalli
+173,Mathikere,Malleshwaram
+174,Devarachikkanahalli,Bommanahalli
+175,Peenya,Rajarajeshwarinagar
+177,Rajagopala Nagara,Rajarajeshwarinagar
+176,Kempapura,Byatarayanapura
+178,Avalahalli,Malleshwaram
+183,K.P Agrahara,Malleshwaram
+179,Varalakshmi Nagar,Byatarayanapura
+180,Sangolli Rayanna Ward,Malleshwaram
+181,Sampigehalli,Byatarayanapura
+192,Hulimavu,Bommanahalli
+182,Thindlu,Byatarayanapura
+184,Uday Nagar,K.R. Pura
+185,Srigandhanagar,Rajarajeshwarinagar
+186,Hanumanthanagar,Malleshwaram
+187,Thanisandra,Byatarayanapura
+188,Jakkur,Byatarayanapura
+189,Subedarpalya,Malleshwaram
+190,Nelagadaranahalli,Rajarajeshwarinagar
+193,Kuvempunagara,Byatarayanapura
+194,Chandranagara,Jayanagar
+196,Hoysala Nagara East,K.R. Pura
+265,Dayanand Nagara,Malleshwaram
+195,Doddabommasandra,Byatarayanapura
+197,Anandapura,K.R. Pura
+198,Kaveripura,Malleshwaram
+199,Arakere,Bommanahalli
+200,Bellanduru,Mahadevapura
+201,A Narayanapura,K.R. Pura
+202,Vibhootipura,K.R. Pura
+203,S.M Krishna Ward,Mahadevapura
+204,Chowdeshwari Nagar,Rajarajeshwarinagar
+205,Shivanasamudra Ward,Mahadevapura
+206,Dooravaninagar,K.R. Pura
+208,Mangammana Palya,Bommanahalli
+209,Sarakki,Jayanagar
+207,Hoodi,Mahadevapura
+210,Jeevan Bhimanagar,C.V. Raman Nagar
+211,Nandini Layout,Rajarajeshwarinagar
+213,Hosapalya,Bommanahalli
+214,Kuvempu Ward,Malleshwaram
+215,Sangama Ward,K.R. Pura
+216,Channasandra,Mahadevapura
+221,Nayanda Halli,Malleshwaram
+217,Dr. Vishnuvardhan Ward,Malleshwaram
+218,Dharmagiri Ward,Rajarajeshwarinagar
+219,Srigandada Kaval,Rajarajeshwarinagar
+222,Chickpete,Gandhinagara
+220,Kadugodi,Mahadevapura
+223,Varthur,Mahadevapura
+225,Agrahara Dasarahalli,Malleshwaram
+226,Bharath Aikya Ward,Mahadevapura
+227,Garudachar Palya,Mahadevapura
+260,Vannarpet,C.V. Raman Nagar
+228,Vidyaranyanagara,Malleshwaram
+229,Kundalahalli,Mahadevapura
+230,Kaveri Nagara,Mahadevapura
+231,Neelasandra,C.V. Raman Nagar
+232,Mahadevapura,K.R. Pura
+261,Bhuvaneshwari Nagar,Gandhinagara
+233,Whitefield,Mahadevapura
+234,Jakkasandra,Bommanahalli
+235,Gunjur,Mahadevapura
+236,Rajarajeshwari Temple ward,K.R. Pura
+237,Dodda Nekkundi,Mahadevapura
+238,Bhattarahalli,K.R. Pura
+254,Parvathi Nagar,Rajarajeshwarinagar
+239,Jagadish Nagar,K.R. Pura
+258,Kodihalli,C.V. Raman Nagar
+240,Devasandra,K.R. Pura
+241,Bommanahalli,Bommanahalli
+242,Chellakere,K.R. Pura
+243,Mallathahalli,Rajarajeshwarinagar
+244,Ashwath Nagar,Mahadevapura
+245,Belathur,Mahadevapura
+246,Panathur,Mahadevapura
+247,Nagapura,Rajarajeshwarinagar
+248,Kalkere,K.R. Pura
+259,Austin Town,C.V. Raman Nagar
+249,K Chennasandra,K.R. Pura
+264,Ramaswamy Palya,Gandhinagara
+251,Vignananagara,K.R. Pura
+252,Cheluvadi Palya,Gandhinagara
+253,Devaraj Urs Ward,Gandhinagara
+255,Byadarahalli,Rajarajeshwarinagar
+256,Shivajinagar,Gandhinagara
+257,Jogpalya,C.V. Raman Nagar
+262,Nagavarapalya,C.V. Raman Nagar
+263,Prakash Nagara,Malleshwaram
+266,Hombegowda Nagara,Gandhinagara
+267,K Kamaraj Ward,Gandhinagara
+268,Ashoka Pillar,Gandhinagara
+269,BHEL Ward,Gandhinagara
+270,K.R Market,Gandhinagara
+271,Rajarajeshwari Nagara,Rajarajeshwarinagar
+279,Bharathi Nagar,Gandhinagara
+272,Domluru,C.V. Raman Nagar
+273,Seshadripuram,Gandhinagara
+274,Venkat Reddy Nagara,Gandhinagara
+275,Ashokanagar,C.V. Raman Nagar
+287,Srinivasa Nagara,Malleshwaram
+276,Dr Rajkumar Ward,Malleshwaram
+305,Kodandarampura,Malleshwaram
+277,Herohalli,Rajarajeshwarinagar
+278,Bandi Reddy Circle Ward,Malleshwaram
+310,Andrahalli,Rajarajeshwarinagar
+280,Attigupe,Malleshwaram
+281,Dattatreya Ward,Gandhinagara
+282,Bapuji Nagara,Malleshwaram
+283,Chandra Layout,Malleshwaram
+284,Swamy Vivekananda Ward,Malleshwaram
+285,Sunkenahalli,Gandhinagara
+286,SilverJubilee Park Ward,Gandhinagara
+288,Hampi Nagar,Malleshwaram
+289,Rajajinagara,Malleshwaram
+290,Kengeri,Rajarajeshwarinagar
+318,Rajeshwarinagar,Rajarajeshwarinagar
+291,Kamakshipalya,Malleshwaram
+292,Chamarajpet,Gandhinagara
+293,Indiranagar,C.V. Raman Nagar
+298,Vasanth Nagar,Gandhinagara
+294,Shivanapalya,Rajarajeshwarinagar
+299,Gayathri Nagara,Malleshwaram
+295,Muneshwara Block,Malleshwaram
+296,G.M Palya,C.V. Raman Nagar
+297,Kengal Hanumanthaiah West,Rajarajeshwarinagar
+300,Subramanyanagara,Malleshwaram
+303,New Thippasandra,C.V. Raman Nagar
+301,Nada prabhu Kempegowda Nagara,Rajarajeshwarinagar
+304,Jnana Bharathi Ward,Rajarajeshwarinagar
+302,Konena Agrahara,C.V. Raman Nagar
+306,Jayamahal,Gandhinagara
+307,Nehru Nagar,Gandhinagara
+308,Ullal,Rajarajeshwarinagar
+309,Shivanagara,Malleshwaram
+311,Krishnadevaraya ward,Malleshwaram
+312,Shakthi Nagar,Byatarayanapura
+313,Sunkadakatte,Rajarajeshwarinagar
+314,K.G.Halli,Byatarayanapura
+315,Rajamahal,Malleshwaram
+316,Chokkasandra,Rajarajeshwarinagar
+317,Freedom Fighter Ward,Rajarajeshwarinagar
+319,Kalyan Nagar,Byatarayanapura
+321,Hosakerehalli,Rajarajeshwarinagar
+320,Dodda Bidarakallu,Rajarajeshwarinagar
+322,Laggere,Rajarajeshwarinagar
+323,Srinagar,Malleshwaram
+324,Pattegar Palya,Malleshwaram
+325,Samadhana Nagar,Byatarayanapura
+327,Nagadevanahalli,Rajarajeshwarinagar
+331,T.R Shamanna Nagar,Malleshwaram
+328,N.R Colony,Malleshwaram
+329,Thyagarajnagar,Malleshwaram
+330,Yediyuru,Rajarajeshwarinagar
+332,Kempambudhi Ward,Malleshwaram
+333,Ittamadu,Rajarajeshwarinagar
+351,Marenahalli West,Malleshwaram
+334,Kamakya Layout,Rajarajeshwarinagar
+335,Chikkalasandra,Rajarajeshwarinagar
+336,Devagiri Temple Ward,Rajarajeshwarinagar
+337,Ganesh Mandira Ward,Rajarajeshwarinagar
+338,Moodalapalya,Malleshwaram
+355,Malleshwaram,Malleshwaram
+339,Gali Anjaneya Temple Ward,Malleshwaram
+340,Mahalakshmipuram,Rajarajeshwarinagar
+341,Kempegowda Layout,Rajarajeshwarinagar
+356,Rama Mandira,Malleshwaram
+342,Kethamaranahalli,Rajarajeshwarinagar
+343,Nagasandra,Rajarajeshwarinagar
+344,Shakthi Ganapathi Nagara,Rajarajeshwarinagar
+345,Anubhava Nagara,Malleshwaram
+346,Deepanjali Nagara,Malleshwaram
+347,Hosahalli,Malleshwaram
+348,Shivapura,Rajarajeshwarinagar
+349,Raja Mayura Varma Ward,Rajarajeshwarinagar
+350,Shankar Mutt,Rajarajeshwarinagar
+352,Nalwadi Krishnaraja Wadiyar Ward,Rajarajeshwarinagar
+353,Dr. Puneeth Rajkumar Ward,Rajarajeshwarinagar
+354,Adi Chunchanagiri Ward,Malleshwaram
+357,Basaveshwara Nagara,Malleshwaram
+358,Jai Maruthi Nagar,Rajarajeshwarinagar
+359,Kamalanagara,Rajarajeshwarinagar
+360,Vrishabhavathi Nagar,Rajarajeshwarinagar
+361,Ashoka Nagara,Malleshwaram
+362,Hegganahalli,Rajarajeshwarinagar
+363,Sadashiva Nagara,Malleshwaram
+364,Azad Nagar,Gandhinagara
+365,Gopalpura,Gandhinagara
+366,Cottonpete,Gandhinagara
+367,Binnypete,Gandhinagara
+368,IPD Salappa Ward,Gandhinagara
+369,Da.Ra. Bendre Ward,Malleshwaram
