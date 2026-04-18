@@ -309,8 +309,8 @@ Flat size determines how many revenue rooms Flent can extract:
 |---|---|---|
 | < 1,400 sqft | 3BHK | 3 rooms |
 | 1,400–1,600 sqft | 3BHK | 3.5 rooms |
-| ≥ 1,600 sqft | 3BHK | 4 rooms |
-| ≥ 2,000 sqft | 4BHK | 5 rooms |
+| ≥ 2,000 sqft | 3BHK | 4 rooms |
+| ≥ 2,200 sqft | 4BHK | 5 rooms |
 
 ### 3. Demand Intensity Index (DII)
 
