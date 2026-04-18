@@ -827,9 +827,13 @@ tc_map = df['tier'].value_counts().to_dict() if 'tier' in df.columns else {}
 viable = int(df['margin_viable'].sum()) if 'margin_viable' in df.columns else 0
 peak = df['arb_margin_best'].max() if 'arb_margin_best' in df.columns else 0
 
-k1, k2, k3, k4, k5 = st.columns(5)
+listing_cols = [c for c in ['cnt_1bhk', 'cnt_3bhk', 'cnt_4bhk'] if c in df.columns]
+total_listings = int(df[listing_cols].sum().sum()) if listing_cols else 0
+
+k1, k2, lk, k3, k4, k5 = st.columns(6)
 k1.metric("Zones", len(df))
 k2.metric("Tier 1", tc_map.get('Tier 1', 0))
+lk.metric("Listings", f"{total_listings:,}")
 k3.metric("Viable", viable)
 k4.metric("Peak Margin", inr(peak))
 k5.metric("Mean Score", f"{df['OPP_SCORE'].mean():.1f}")
