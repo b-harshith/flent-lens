@@ -17,6 +17,7 @@ venv/
 .vscode/
 .idea/
 
+
 # Pipeline outputs (large files, regenerated on run)
 output/
 
@@ -24,6 +25,6 @@ output/
 dashboard/.session_overrides.json
 dashboard/snapshots/
 
-# Data (source data is private, not for public repos)
-data/raw/
-data/processed/
+# Data
+# data/raw/
+# data/processed/
