@@ -827,7 +827,7 @@ tc_map = df['tier'].value_counts().to_dict() if 'tier' in df.columns else {}
 viable = int(df['margin_viable'].sum()) if 'margin_viable' in df.columns else 0
 peak = df['arb_margin_best'].max() if 'arb_margin_best' in df.columns else 0
 
-listing_cols = [c for c in ['cnt_1bhk', 'cnt_3bhk', 'cnt_4bhk'] if c in df.columns]
+listing_cols = [c for c in df.columns if c.startswith('cnt_')]
 total_listings = int(df[listing_cols].sum().sum()) if listing_cols else 0
 
 k1, k2, lk, k3, k4, k5 = st.columns(6)
