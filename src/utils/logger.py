@@ -56,10 +56,10 @@ def print_banner():
     for line in art.strip().split("\n"):
         banner.append(line + "\n", style="bold cyan")
     banner.append("\n")
-    banner.append("             L E N S", style="bold white")
+    banner.append("             L E N S   2.0", style="bold white")
     banner.append("  \n\n", style="dim")
     banner.append(f"  {config.CITY_NAME} Co-Living Opportunity Analysis\n", style="italic cyan")
-    banner.append(f"  Navigate {config.CITY_NAME}'s Co-Living Opportunity Market\n\n", style="dim")
+    banner.append(f"  H3 Resolution {config.H3_RESOLUTION} · PCA Weights · SAR/SEM Validation\n\n", style="dim")
 
     team_names = " · ".join([name for name, _ in TEAM])
     team_ids   = " · ".join([sid for _, sid in TEAM])
@@ -141,12 +141,12 @@ def display_dataframe_summary(df, title="Data Summary"):
 def display_final_dashboard(tier_counts, top5, morans_result, ols_r2, export_paths, elapsed):
     console.print()
     console.print(Panel(
-        "[bold white]FLENT LENS — ANALYSIS COMPLETE[/]",
+        f"[bold white]FLENT LENS 2.0 — {config.CITY_NAME.upper()} ANALYSIS COMPLETE[/]",
         border_style="green", expand=True
     ))
 
     # ── Tier Distribution ──
-    tier_table = Table(title="Ward Distribution", show_header=True,
+    tier_table = Table(title="Hex Distribution", show_header=True,
                        header_style="bold", border_style="green")
     tier_table.add_column("Tier", style="bold")
     tier_table.add_column("Count", justify="right")
@@ -157,17 +157,19 @@ def display_final_dashboard(tier_counts, top5, morans_result, ols_r2, export_pat
         tier_table.add_row(f"[{color}]{tier_name}[/]", str(count))
 
     # ── Top 5 ──
-    top_table = Table(title="Top 5 Investment Wards", show_header=True,
+    top_table = Table(title="Top 5 Investment Hexes", show_header=True,
                       header_style="bold", border_style="cyan")
     top_table.add_column("#", justify="right", style="dim")
-    top_table.add_column("Ward", style="bold")
+    top_table.add_column("Zone", style="bold")
     top_table.add_column("Score", justify="right", style="green")
-    top_table.add_column("Arb Margin", justify="right", style="cyan")
+    top_table.add_column("Margin", justify="right", style="cyan")
+    top_table.add_column("Asset", style="dim")
     for i, (_, row) in enumerate(top5.iterrows(), 1):
-        wname = str(row.get('ward_name', row.get('ward_id', '?')))[:25]
+        name = str(row.get('hex_name', row.get('hex_id', '?')[:10]))[:22]
         score = f"{row['OPP_SCORE']:.1f}"
-        margin = f"₹{row['arb_margin_best']:,.0f}" if 'arb_margin_best' in row and row['arb_margin_best'] > 0 else "—"
-        top_table.add_row(str(i), wname, score, margin)
+        margin = f"₹{row['arb_margin_best']:,.0f}" if row.get('arb_margin_best', 0) > 0 else "—"
+        asset = row.get('best_asset_type', '?')[:5].title()
+        top_table.add_row(str(i), name, score, margin, asset)
 
     console.print(Columns([tier_table, top_table], padding=(2, 4)))
 

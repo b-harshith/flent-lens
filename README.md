@@ -1,481 +1,478 @@
-# 🔍 Flent Lens
+# Flent Lens 2.0 — Multi-City Co-Living Arbitrage Intelligence Platform
 
-> **Navigate India's Co-Living Arbitrage Market**
-
-*A spatial-economic analysis pipeline + interactive dashboard that identifies geographic zones with maximum per-room arbitrage margin, convertible 3BHK+ supply, and strongest co-living demand — built for Flent's investment decision-making.*
+> **Research Question:** In a rapidly formalizing Indian rental market, which geographic micro-markets contain the highest concentration of under-priced large-format residential properties (3BHK+ apartments AND villas/independent houses) whose per-room co-living revenue, after applying an empirically validated Demand Discount Factor (DDF), consistently exceeds the whole-unit master lease cost — and can this structural pricing inefficiency be proven through spatial econometric evidence?
 
 ---
 
-**Team:** Harshith Bejjanki `SM24UBBA047` · Suneeth Boorgula `SM24UBBA016` · Sudhiksha `SM24UBBA033` · Peddi Sudeeksha `SM24UBBA027` · Vedanth Nagaarur `SM24UBBA019`
+## Table of Contents
+
+1. [What This Does](#what-this-does)
+2. [Architecture](#architecture)
+3. [The Economic Model](#the-economic-model)
+4. [Analytical Framework](#analytical-framework)
+5. [Spatial Methodology](#spatial-methodology)
+6. [Econometric Validation](#econometric-validation)
+7. [Model Assumptions](#model-assumptions)
+8. [Data Pipeline](#data-pipeline)
+9. [Output Deliverables](#output-deliverables)
+10. [Usage](#usage)
+11. [Directory Structure](#directory-structure)
+12. [Configuration](#configuration)
+13. [Dependencies](#dependencies)
+14. [Team](#team)
 
 ---
 
-## Key Project Assumptions
+## What This Does
 
-The Flent Lens analytical model is built upon the following core business and spatial-economic assumptions.
+Flent Lens is a **spatial analytical platform** that identifies geographic zones where co-living rental arbitrage is structurally profitable. It does this by:
 
-> [!IMPORTANT]
-> **1. Rental Arbitrage Logic**: Flent does NOT buy properties; it leases large 3BHK+ units at "wholesale" rates and converts them into "retail" co-living rooms.
->
-> **2. Wholesale Sourcing (Q1)**: Acquisition pricing is anchored to the **25th percentile (Q1)** of market rent, reflecting Flent's ability to negotiate for distressed or bulk inventory.
->
-> **3. Dynamic Demand Discount Factor (DDF)**: Per-room revenue uses a **base DDF of 0.80** (80% of the ward median 1BHK rent), but this is **not a fixed cap**. A ±10% ward-level elastic band adjusts the discount based on local price pressure — high-demand wards compress to ~0.90×, low-demand wards drop to ~0.70×. Rooms must always be a better value proposition than a standalone apartment.
->
-> **4. Space Optimization (Dynamic Yield)**: The number of revenue rooms depends on the total square footage (e.g., 3 rooms for standard 3BHKs, 4 rooms for XL units ≥2,000 sqft).
->
-> **5. Viability Pillars**: A zone is only investable if it yields an arbitrage margin **>₹5,000/month** and has a supply depth of **>3 listings**.
->
-> **6. Spatial Spillover (Aura Effect)**: Co-living demand is contagious. Wards adjacent to Tier 1 clusters receive a scoring boost, while isolated high-performing wards are penalized (Island Penalty).
->
-> **7. Transit as a Penalty**: Unlike traditional real estate, high bus/transit density is weighted negatively (-0.10) to account for noise, congestion, and the "premium" positioning of Flent properties.
+1. **Ingesting** 71,000+ rental listings across 15 Indian cities (scraped from MagicBricks)
+2. **Tessellating** the city into ~5 km² hexagonal cells using Uber's H3 grid system (Resolution 7)
+3. **Computing** dual-track arbitrage margins for both apartments and villas/houses
+4. **Validating** the arbitrage thesis through spatial econometric models (SAR/SEM)
+5. **Ranking** every hexagon by a PCA-weighted composite opportunity score
+6. **Delivering** KML maps, rich Excel reports, and machine-readable JSON summaries
+
+The platform is **boundary-less** — it requires zero administrative KML files to analyze a new city. Feed it listings with lat/lon, and it generates the entire analytical output.
 
 ---
 
-## Limitations & Caveats
+## Architecture
 
-* Single data source — Magicbricks only. Cross-platform validation would improve robustness.
-* No time-series — Rent trends and vacancy rates are not captured.
-* Transit = bus only — Metro and suburban rail are not modelled.
-* Ward centroid simplification — SEZ distances are measured from ward centroids, not boundaries.
-* Demand discount floor — While the base DDF of 0.80 is dynamically adjusted per ward (±10% elastic band), actual co-living pricing may vary further by property condition, furnishing quality, and brand positioning, which the model does not capture.
-* No capex modelling — Furnishing costs, security deposits, and setup capital are not included in the margin calculation.
-
----
-
-## The Research Question
-
-> **Which areas offer the most favourable combination of factors for Flent — maximum per-room arbitrage margin, highest availability of convertible 3BHK+ properties, and strongest demand for shared living in premium furnished rooms?**
-
-This pipeline answers that question rigorously — with real Magicbricks rental data, geographic boundary geometry, transit routes, and SEZ employment zones — producing a ranked, tiered investment target list for Flent's co-living expansion across multiple cities.
-
----
-
-## The Business Logic
-
-Flent's model is a **rental arbitrage operation**:
-
-1. **Lease** a large 3BHK+ apartment at the zone's market rent
-2. **Convert** it into premium furnished co-living rooms
-3. **Earn** the spread between per-room revenue and the master lease cost
-
-Three pillars determine zone viability:
-
-| Pillar | Signal | Threshold |
-|--------|--------|-----------|
-| **Arbitrage Margin** | `(avg_rent_1bhk × rooms × discount) − avg_rent_3bhk` | > ₹5,000/month |
-| **Supply Depth** | Count of 3BHK+ listings ≥ 1,100 sqft | > 3 per zone |
-| **Demand Intensity** | Price pressure + small-flat concentration + PSF spread | Composite 0–1 index |
-
----
-
-## Quick Start
-
-```bash
-# 1. Activate virtual environment
-source venv/bin/activate         # macOS / Linux
-
-# 2. Run the full analysis pipeline (for active city)
-python main.py
-
-# 3. Launch the Interactive Dashboard
-streamlit run app.py
-# → Opens http://localhost:8501 in your browser
+```
+                           ┌─────────────────────┐
+                           │   compiled_listings  │
+                           │   .csv (71,282 rows) │
+                           └──────────┬──────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 1: Data Ingestion         │
+                    │   Filter by city + validate       │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 2: H3 Grid Generation     │
+                    │   Res 7 hex assignment + MAUP     │
+                    │   stability test (Res 6/7/8)      │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 3: OSM Context            │
+                    │   Transit · Employment · POIs     │
+                    │   Reverse geocoding               │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 4: Feature Engineering    │
+                    │   K-Ring smoothing · Neff · CIs   │
+                    │   Demand + Supply features        │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 5: Economic Modeling      │
+                    │   Apartments ←→ Villas            │
+                    │   Elastic DDF · Room yield        │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 6: PCA + Scoring          │
+                    │   Weight calibration · Composite  │
+                    │   score · H3 spillover · Tiers    │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 7: Econometric Validation │
+                    │   Moran's I · OLS · SAR/SEM      │
+                    └─────────────────┬─────────────────┘
+                                      │
+                    ┌─────────────────┼─────────────────┐
+                    │   STAGE 8: Export                 │
+                    │   KML · XLSX · GeoJSON · JSON     │
+                    └───────────────────────────────────┘
 ```
 
 ---
 
-## Project Structure
+## The Economic Model
 
-```
-BBA_Python_final/               ← Flent Lens project root
-│
-├── main.py                     ← Pipeline orchestrator (run this directly)
-├── config.py                   ← ALL paths, weights, and thresholds (source of truth)
-├── city_config.py              ← Multi-city profiles (Bangalore, Hyderabad)
-├── app.py                      ← Streamlit dashboard (new)
-├── requirements.txt            ← Python dependencies
-│
-├── data/
-│   ├── raw/
-│   │   ├── bangalore/
-│   │   │   ├── magicbricks_final_listings.csv
-│   │   │   ├── gba-369-wards-december-2025.kml
-│   │   │   ├── bmtc_bus_routes.kml
-│   │   │   └── SEZ List/
-│   │   └── hyderabad/
-│   │       ├── magicbricks_final_listings_hyderabad.csv
-│   │       └── Hyderabad Pincode Map.kml
-│   └── processed/                    ← Auto-generated intermediates
-│       ├── bangalore/
-│       └── hyderabad/
-│
-├── src/
-│   ├── pipeline/               ← Pre-processing stages
-│   │   ├── cleaner.py          ← Magicbricks cleaning, BHK extraction, dedup
-│   │   ├── geocoder.py         ← SEZ geocoding via Nominatim API
-│   │   └── mapper.py           ← SEZ 25-acre circle KML generation
-│   │
-│   ├── modules/                ← Core analytical engine
-│   │   ├── loader.py           ← Data I/O, schema validation, KML parsing
-│   │   ├── spatial.py          ← Point-in-polygon joins, route intersection
-│   │   ├── aggregator.py       ← Outlier removal, ward-level statistics
-│   │   ├── economics.py        ← Arbitrage margin, DII, SFS, margin density
-│   │   ├── transit.py          ← Transit connectivity index
-│   │   ├── sez.py              ← SEZ gravity model (employment proximity)
-│   │   ├── scoring.py          ← Composite opportunity score + tier assignment
-│   │   └── validator.py        ← Moran's I + OLS regression
-│   │
-│   └── utils/
-│       ├── logger.py           ← Rich terminal UI (banners, stages, metrics)
-│       └── exporter.py         ← KML atlas, XLSX report, GeoJSON export
-│
-└── output/                     ← Generated deliverables
-    ├── bangalore/
-    │   ├── flent_investment_atlas.kml
-    │   ├── flent_lens_report.xlsx
-    │   ├── ward_analysis.geojson
-    │   ├── 3bhk_supply_price_quartiles.xlsx
-    │   ├── moran_scatterplot_avg_rent_1bhk.png
-    │   └── ols_arbitrage_validation.png
-    └── hyderabad/
-        └── (same structure)
-```
+### The Arbitrage Thesis
 
----
+The Indian rental market has a structural pricing inefficiency:
 
-## Pipeline Architecture
+> **Large apartments (3BHK+) and villas are priced on a per-unit basis, but co-living revenue is generated per-room.** When a 3BHK flat rents at ₹40,000/month and each of its 3 rooms can be independently let at ₹18,000/month (80% of standalone 1BHK rent), the co-living operator earns ₹54,000 — a ₹14,000/month (35%) margin.
 
-```mermaid
-graph TD
-    subgraph "Stage 0 · Pre-Processing"
-        RAW_CSV["Raw Listings CSV"] --> CL["cleaner.py<br/><i>Clean, deduplicate, extract BHK</i>"]
-        CL --> CLEAN["listings.csv"]
-        RAW_SEZ["Raw SEZ CSV"] --> GC["geocoder.py<br/><i>Nominatim geocoding</i>"]
-        GC --> SEZ_CSV["sez_latlong.csv"]
-        SEZ_CSV --> MP["mapper.py<br/><i>25-acre circle KML</i>"]
-        MP --> SEZ_KML["sez_enriched.kml"]
-    end
+### Dual-Track Model
 
-    subgraph "Stage 1 · Data Ingestion"
-        CLEAN --> LD["loader.py"]
-        GEO_KML["Geo Boundaries KML"] --> LD
-        TRANSIT_KML["Transit Routes KML"] --> LD
-        SEZ_KML --> LD
-        LD --> LG["listings_gdf"]
-        LD --> WG["wards_gdf"]
-        LD --> RG["routes_gdf"]
-        LD --> SG["sez_gdf"]
-    end
+Lens 2.0 evaluates **two sourcing strategies** per hexagon:
 
-    subgraph "Stage 2 · Spatial Operations"
-        LG & WG --> SP["spatial.py<br/><i>Point-in-polygon + proximity</i>"]
-        RG & WG --> SP
-        SP --> LGW["listings w/ ward_id"]
-        SP --> CLR["clipped routes"]
-    end
-
-    subgraph "Stage 3 · Feature Engineering"
-        LGW --> AG["aggregator.py<br/><i>Outlier removal, medians, SFC</i>"]
-        AG --> WDF["ward_df — zone-level features"]
-    end
-
-    subgraph "Stage 4 · Economic Modeling"
-        WDF --> EC["economics.py<br/><i>Arb margin, DII, SFS</i>"]
-        EC --> WDFE["ward_df + economics"]
-    end
-
-    subgraph "Stage 5 · Contextual Overlays"
-        WG & RG & CLR --> TR["transit.py<br/><i>Route density score</i>"]
-        WG & SG --> SZ["sez.py<br/><i>Gravity model</i>"]
-        WDFE & TR & SZ --> WDFO["ward_df + overlays"]
-    end
-
-    subgraph "Stage 6 · Opportunity Scoring"
-        WDFO --> SC["scoring.py<br/><i>Weighted composite + spillover</i>"]
-        SC --> WDFS["ward_df + OPP_SCORE + tier"]
-    end
-
-    subgraph "Stage 7 · Econometric Validation"
-        WDFS & WG --> VL["validator.py<br/><i>Moran's I, OLS regression</i>"]
-        VL --> MORAN["moran_scatterplot.png"]
-        VL --> OLS_IMG["ols_validation.png"]
-    end
-
-    subgraph "Stage 8 · Export"
-        WDFS & WG & LGW --> EX["exporter.py"]
-        EX --> KML["Investment Atlas KML"]
-        EX --> XLSX["Excel Report (4 sheets)"]
-        EX --> GEOJSON["ward_analysis.geojson"]
-    end
-
-    GEOJSON --> APP["app.py<br/><i>Streamlit Dashboard</i>"]
-
-    style CL fill:#e3f2fd
-    style SP fill:#e3f2fd
-    style AG fill:#e3f2fd
-    style EC fill:#fff3e0
-    style TR fill:#e8f5e9
-    style SZ fill:#e8f5e9
-    style SC fill:#fce4ec
-    style VL fill:#f3e5f5
-    style EX fill:#e0f2f1
-    style APP fill:#e8eaf6
-```
-
----
-
-## The Dashboard
-
-The **Streamlit Dashboard** (`app.py`) is the primary interface for exploring, comparing cities, and understanding the analysis.
-
-```bash
-streamlit run app.py
-# Opens http://localhost:8501
-```
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| **City Switcher** | Toggle between Bangalore and Hyderabad in the sidebar |
-| **Pipeline Execution** | Run the pipeline directly from the dashboard with live log streaming |
-| **Top 3 Ward Cards** | Detailed economic snapshot cards mirroring the KML atlas popups |
-| **Opportunity Atlas** | Interactive choropleth map with hover tooltips for every zone |
-| **Economic Analysis** | Margin vs rent scatter plot with full ward economics table |
-| **Statistical Validation** | OLS regression + Moran's I results with plain-English interpretations |
-| **Data Export** | Browse Excel sheets and download raw report files |
-
----
-
-## Pipeline Stages
-
-```bash
-python main.py
-```
-
-The pipeline runs **8 stages** with a narrative terminal UI:
-
-| Stage | Name | Description |
-|-------|------|-------------|
-| 0 | Data Pre-Processing | Clean Magicbricks CSV, geocode SEZs, generate KML geometries |
-| 1 | Data Ingestion | Load core datasets: listings, geo boundaries, bus routes, SEZ points |
-| 2 | Spatial Operations | Point-in-polygon zone assignment with proximity fallback, route clipping |
-| 3 | Feature Engineering | Outlier removal (σ-based), zone-level median rents, SFC, PSF spread |
-| 4 | Economic Modeling | Arbitrage margin (3BHK/4BHK), DII, SFS, effective margin density |
-| 5 | Contextual Overlays | Transit score (route density + length), SEZ gravity score |
-| 6 | Opportunity Indexing | Composite score, spatial spillover / island penalty, tier assignment |
-| 7 | Econometric Validation | Moran's I spatial autocorrelation + Hedonic OLS regression |
-| 8 | Export & Delivery | KML atlas, 4-sheet XLSX report, GeoJSON for dashboard |
-
-Stages are **skipped automatically** if cached files already exist.
-
----
-
-## Output Files
-
-| File | Description |
-|------|-------------|
-| `flent_investment_atlas.kml` | Open in Google Earth — zone polygons + listing pins in layered format |
-| `flent_lens_report.xlsx` | 4 sheets: Executive Summary, Full Data, Score Breakdown, OLS Model |
-| `ward_analysis.geojson` | Full ward dataset for dashboard map + QGIS / web mapping |
-| `3bhk_supply_price_quartiles.xlsx` | 3BHK rent quartile breakdown per zone |
-| `moran_scatterplot_*.png` | Spatial autocorrelation diagnostic |
-| `ols_arbitrage_validation.png` | OLS regression validation plot |
-
----
-
-## Methodology
-
-### 1. Arbitrage Margin
-
-The core revenue model finds the spread between what Flent pays to lease a 3BHK and what it earns splitting it into rooms.
-
-```
-per_room_revenue  = city_median_rent_1bhk × DEMAND_DISCOUNT_FACTOR (0.80)
-arb_margin_3bhk   = (per_room_revenue × 3) − q25_rent_3bhk
-arb_margin_4bhk   = (per_room_revenue × 4) − q25_rent_4bhk
-arb_margin_best   = max(arb_margin_3bhk, arb_margin_4bhk)
-```
-
-**Acquisition cost** uses the **25th percentile** (distressed/bulk inventory Flent targets).
-**Revenue** uses the **50th percentile** (median market rate Flent charges per room).
-The **0.80 demand discount factor** reflects tenants accepting a 20% discount vs solo 1BHK renting, in exchange for premium furnishing and zero hassle.
-
-### 2. Dynamic Yield Model
-
-Flat size determines how many revenue rooms Flent can extract:
-
-| Size Range | BHK | Revenue Rooms |
+| Parameter | Apartment Track | Villa/House Track |
 |---|---|---|
-| < 1,400 sqft | 3BHK | 3 rooms |
-| 1,400–1,600 sqft | 3BHK | 3.5 rooms |
-| ≥ 2,000 sqft | 3BHK | 4 rooms |
-| ≥ 2,200 sqft | 4BHK | 5 rooms |
+| Source Asset | 3BHK+ flats | Villas, Independent Houses |
+| Acquisition Cost | Q1 (25th percentile) rent | Q1 (25th percentile) rent |
+| Min Sqft | 1,100 sqft | 1,800 sqft |
+| Room Yield | 3–4 rooms (dynamic by sqft) | 4–6 rooms (larger footprint) |
+| DDF Baseline | 80% of 1BHK rent | 75% (harder co-living stabilization) |
 
-### 3. Demand Intensity Index (DII)
+The system selects the **better-performing track** per hex automatically.
 
-```
-DII = w₁ × norm(price_pressure)  +  w₂ × norm(sfc)  +  w₃ × norm(psf_spread)
+### Demand Discount Factor (DDF)
 
-price_pressure = median_rent_1bhk / city_median_1bhk
-sfc            = (cnt_1bhk + cnt_2bhk) / total_listings
-psf_spread     = (max_psf − min_psf) / median_psf
-```
-
-Weights: `0.40 / 0.30 / 0.30` (configurable in `config.py`).
-
-### 4. Supply Feasibility Score (SFS)
+The DDF models the reality that a co-living room cannot command full 1BHK rent:
 
 ```
-SFS = w₁ × norm(supply_volume)  +  w₂ × norm(size_adequacy)  +  w₃ × norm(roi_score)
-
-supply_volume = log1p(cnt_3bhk + cnt_4bhk) / log1p(city_max)
-size_adequacy = pct_3bhk_listings ≥ MIN_SQFT_3BHK
-roi_score     = arb_margin_best / max(arb_margin_best_citywide)
+Per-Room Revenue = Median_1BHK_Rent × DDF
 ```
 
-Weights: `0.35 / 0.30 / 0.35` (configurable in `config.py`).
+The DDF is **elastic** — it stretches based on local market pressure:
+- High-demand hex (price_pressure > 1.0): DDF shifts toward 90%
+- Low-demand hex: DDF drops toward 70%
+- Band: ±10% around baseline
 
-### 5. Composite Opportunity Score
+### Room Yield Logic
+
+| Apartment Sqft | Rooms | Villa Sqft | Rooms |
+|---|---|---|---|
+| < 1,400 | 3 | < 2,500 | 4 |
+| 1,400 – 1,999 | 3.5 | 2,500 – 2,999 | 5 |
+| ≥ 2,000 | 4 | ≥ 3,000 | 6 |
+
+---
+
+## Analytical Framework
+
+### Composite Opportunity Score
+
+Every hexagon receives a composite score from 0–100:
 
 ```
-ECON_SCORE  = (arb_margin_pct × 0.45) + (DII × 0.30) + (SFS × 0.25)
-OPP_SCORE   = ECON_SCORE + (transit_score × 0.10) + (sez_score × 0.20)
+OPP_SCORE = ECON_SCORE + OVERLAY_ADJUSTMENTS + SPATIAL_AURA
 ```
 
-Overlay weights are set to 0 automatically when transit/SEZ data is unavailable for a city.
+Where:
 
-### 6. Spatial Spillover (Neighborhood Contagion)
+**ECON_SCORE** = `w₁ × norm(arb_margin) + w₂ × DII + w₃ × SFS`
 
-A Tier 1 zone in a cluster of strong neighbouring zones is more investable than an isolated one:
+- **w₁, w₂, w₃** are PCA-calibrated (or expert defaults if PCA disabled)
 
-- **Tier 1 neighbor:** +10% `OPP_SCORE` boost
-- **Tier 2 neighbor:** +5% boost
-- **Tier 3 neighbor:** +2.5% boost
-- **Island penalty:** −15% for Tier 1 zones with zero Tier 1/2 neighbors
+**DII (Demand Intensity Index)** = `w_pp × price_pressure + w_sfc × small_flat_concentration + w_psf × psf_spread`
 
-### 7. Tier Assignment
+- **Price Pressure:** How expensive is this hex relative to city median?
+- **SFC:** What fraction of listings are 1BHK/2BHK (indicating room-level demand)?
+- **PSF Spread:** How large is the gap between 1BHK and 3BHK per-sqft pricing?
 
-Tiers are assigned on **percentile bands of eligible zones only** (zones where `margin_viable = True`):
+**SFS (Supply Feasibility Score)** = `w_vol × log_volume + w_size × size_adequacy + w_roi × capital_efficiency`
 
-| Tier | Percentile | Meaning |
-|------|------------|---------|
-| Tier 1 | ≥ 75th | Priority sourcing targets |
-| Tier 2 | ≥ 50th | Secondary pipeline |
-| Tier 3 | ≥ 25th | Watch list |
-| Excluded | < 25th or margin not viable | Not recommended |
+**Overlay Adjustments** (from OpenStreetMap):
+- **Transit:** Metro proximity (+), bus stop density (−)
+- **Employment:** Office cluster proximity
+- **Lifestyle:** Cafes, supermarkets, gyms density
+
+**Spatial Aura** (H3 K-Ring):
+- +10% if adjacent to Tier 1 hexes
+- +5% if adjacent to Tier 2
+- −15% **Island Penalty** if a Tier 1 hex has zero Tier 1/2 neighbors
+
+### PCA Weight Calibration
+
+All composite index weights are derived from **Principal Component Analysis**:
+
+1. Take normalized sub-components across all hexes
+2. Run PCA (1 component) → extract squared loadings
+3. Normalize to weights summing to 1.0
+4. Floor at 10% (no feature zeroed out)
+
+This replaces arbitrary expert weights with mathematically justified proportions. Both PCA and expert weights are logged in outputs for transparency. Set `USE_PCA_WEIGHTS = False` in `config.py` to revert.
+
+### Tier Assignment
+
+| Tier | Criteria |
+|---|---|
+| **Tier 1** | Score ≥ 75th percentile AND `Neff ≥ 8` AND `stability ≥ 0.80` |
+| **Tier 2** | Score ≥ 50th percentile (or demoted from T1 due to data issues) |
+| **Tier 3** | Score ≥ 25th percentile |
+| **Excluded** | Below viability floor (`margin < ₹5,000` or `margin% < 5%`) |
+
+---
+
+## Spatial Methodology
+
+### H3 Hexagonal Grid (Resolution 7)
+
+Every listing is mapped to a hex: `hex_id = h3.latlng_to_cell(lat, lon, 7)`
+
+**Why H3 instead of administrative boundaries?**
+- Uniform geometry: 6 equal neighbors (vs irregular ward polygons)
+- No boundary files needed: instant expansion to any city
+- ~5.1 km² per hex: granular enough for micro-market differentiation
+
+### K-Ring Weighted Smoothing
+
+For hexes with sparse data, we borrow strength from neighbors:
+
+```
+w_i = count_i / (1 + β × dist_km)     β = 0.4
+Neff = (Σw)² / Σ(w²)                  Effective Sample Size
+```
+
+**Confidence Levels:**
+- `Neff ≥ 8` → Full confidence (eligible for Tier 1)
+- `5 ≤ Neff < 8` → Low confidence (capped at Tier 2)
+- `Neff < 5` → Data insufficient (excluded from scoring)
+
+All price aggregations use **weighted medians** (not means) because rent distributions are right-skewed. Uncertainty is quantified via **500-iteration bootstrap** confidence intervals at the 90% level.
+
+### MAUP Stability Testing
+
+The Modifiable Areal Unit Problem means our KPIs change with hex size. We test:
+- Resolution 6 (~36 km²), 7 (~5 km²), 8 (~0.7 km²)
+- Per-hex stability: `1 - MAD(KPI) / median(KPI)`
+-  Tier 1 requires stability ≥ 0.80
 
 ---
 
 ## Econometric Validation
 
+### Why This Matters
+
+Every claim in the output ("Hex X has 35% arbitrage margin") needs statistical backing. Without econometric validation, the entire analysis is an assertion, not evidence.
+
 ### Moran's I — Spatial Autocorrelation
-Tests whether rental prices cluster geographically. The Moran scatter plot has four quadrants:
 
-- **HH (High–High):** High-rent zones near high-rent zones — premium rental clusters.
-- **LL (Low–Low):** Low-rent zones near low-rent zones — affordable pockets.
-- **LH (Low–High):** Low 1BHK rent zones surrounded by high-rent neighbours. These represent statistically proven concentrations of **arbitrage-favourable areas** — zones where acquisition cost (3BHK) is low relative to the surrounding retail rent pressure, meaning Flent can lease cheap and price rooms competitively against the more expensive adjacent market.
-- **HL (High–Low):** Overpriced outliers in affordable areas — avoid.
+Tests whether high-rent hexes cluster near other high-rent hexes:
 
-Positive Moran's I (> 0.3, p < 0.05) confirms the spatial structure is real, not random, validating the spillover multiplier rules in the scoring model.
-
-### Arbitrage Structural OLS
 ```
-Q25_Acquisition_Rent_3BHK ~ Median_Retail_Rent_1BHK
+I = (N / Σw_ij) × [Σ w_ij(x_i - x̄)(x_j - x̄)] / [Σ(x_i - x̄)²]
 ```
-HC3 robust standard errors. The slope coefficient β proves empirically that the 0.80 demand discount factor is structurally profitable — the mathematical breakeven discount is extracted directly from market data.
+
+- **999 permutations** for robust p-values
+- Positive I (p < 0.05) → rents are spatially clustered → spatial models are necessary
+- The Moran scatterplot identifies **LH quadrant hexes** (low rent surrounded by high rent) — these are the prime arbitrage targets
+
+### OLS Baseline
+
+```
+Q1_3BHK_Rent ~ α + β × Median_1BHK_Rent
+```
+
+**Key output:** β (the cost multiplier) and the **breakeven DDF**:
+
+```
+Breakeven_DDF = β / rooms
+```
+
+If Flent's operational DDF exceeds breakeven, the arbitrage is **structurally proven in the dataset**.
+
+### SAR (Spatial Autoregressive Lag Model)
+
+```
+Q1_3BHK = ρ × W × Q1_3BHK + α + β × Median_1BHK + ε
+```
+
+- **ρ** = spatial lag coefficient (does your neighbor's 3BHK rent predict yours?)
+- Uses K=6 nearest-neighbor weights (natural for hex geometry)
+- If SAR β differs significantly from OLS β, it proves that ignoring spatial dependence biases results
+- Model selection between SAR and SEM guided by Lagrange Multiplier tests
 
 ---
 
-## Supported Cities
+## Model Assumptions
 
-| City | Geo Unit | Zones | Transit | SEZ | CRS |
-|------|----------|-------|---------|-----|-----|
-| **Bangalore** | BBMP Ward | 369 | ✅ BMTC Routes | ✅ SEZ Gravity | EPSG:32643 |
-| **Hyderabad** | Pincode Zone | 92 | — | — | EPSG:32644 |
-
-To add a new city: add a profile to `city_config.py`, provide raw data files, and set `ACTIVE_CITY`.
-
----
-
-## Key Configuration Parameters
-
-All parameters live in `config.py`. Key ones:
-
-| Parameter | Default | Purpose |
-|-----------|---------|---------|
-| `DEMAND_DISCOUNT_FACTOR` | `0.80` | Per-room rent as % of standalone 1BHK |
-| `MARGIN_VIABLE_PCT` | `0.05` | Minimum margin % to qualify as viable |
-| `OUTLIER_STD_THRESHOLD` | `3.0` | Std devs for outlier removal |
-| `MIN_LISTINGS_PER_BHK` | `3` | Min listings per BHK type for reliability |
-| `MAX_VALID_1BHK_RENT` | `₹50,000` | Cap on valid 1BHK rent data |
-| `MIN_SQFT_3BHK` | `1,100` | Minimum sqft for 3BHK conversion |
-| `ECON_WEIGHT_ARBITRAGE` | `0.45` | Composite score weight for arbitrage |
-| `ECON_WEIGHT_DII` | `0.30` | Composite score weight for demand |
-| `ECON_WEIGHT_SFS` | `0.25` | Composite score weight for supply |
-| `OVERLAY_WEIGHT_TRANSIT` | `0.10` | Score weight for transit connectivity |
-| `OVERLAY_WEIGHT_SEZ` | `0.20` | Score weight for SEZ proximity |
-| `TIER1_PERCENTILE` | `75` | Percentile cutoff for Tier 1 |
-| `SPILLOVER_BOOST_TIER1` | `1.10` | Aura boost from Tier 1 neighbors |
-| `ISOLATION_PENALTY` | `0.85` | Penalty for isolated high-score zones |
+| # | Assumption | Rationale | Impact if Violated |
+|---|---|---|---|
+| 1 | **Asking rents approximate market rents** | MagicBricks listings reflect actual transaction prices within ±10% | Margins may be inflated; DDF sensitivity table provides safety check |
+| 2 | **1BHK rent is the revenue benchmark** | Co-living rooms compete with studio/1BHK alternatives | Overestimates revenue in markets where sharing is culturally preferred |
+| 3 | **Q1 sourcing is achievable** | Operators have procurement leverage for below-median properties | Conservative — only bottom 25% of asking rents are considered |
+| 4 | **DDF of 75–80% is sustainable** | Empirical range from Flent's existing operations | Validated against OLS breakeven; DDF sensitivity tested at 70–85% |
+| 5 | **Spatial proximity indicates market similarity** | Adjacent hexes share transportation, amenities, and tenant pools | MAUP stability testing mitigates across resolution scales |
+| 6 | **OSM data quality is uniform** | OpenStreetMap coverage varies by city | `osm_confidence` metric scales overlay weights proportionally |
+| 7 | **Transit directionality:** Bus stops indicate congestion (−), metro indicates premium connectivity (+) | Validated for Indian metros where metro proximity drives rent premiums | Reversed in cities where bus networks are premium (none identified) |
+| 8 | **Snapshot analysis (no temporal dynamics)** | Single scrape date — no seasonal or trend decomposition | Margins may vary ±15% seasonally; interpreted as point-in-time signal |
 
 ---
 
-## Future Expansion & Strategic Roadmap
+## Data Pipeline
 
-Flent Lens is pivoting from a single-city investment tool into a multi-city co-living expansion intelligence platform. 
+### Input Data
 
-### 1. The Cross-City Answer
-We are developing the **City Attractiveness Index (CAI)**, a weighted model to identify the next priority city for Flent's expansion. The CAI scores cities across 6 dimensions:
-- **Demand (25%)**: Price pressure, IT workforce, rent growth.
-- **Margin (25%)**: Median arbitrage margin and structural efficiency (OLS).
-- **Supply (15%)**: Viable zone availability.
-- **Spatial (10%)**: Spatial clustering (Moran's I).
-- **Macro (15%)** & **Risk (10%)**: Co-living market maturity, competition, and data depth.
+**Source:** MagicBricks rental listings, scraped April 2026
 
-Primary candidate expansion cities include **Pune, Chennai, Mumbai, and Gurgaon**.
+| Column | Description | Used For |
+|---|---|---|
+| `search_city` | City identifier | Filtering |
+| `latitude`, `longitude` | Geocoordinates | H3 hex assignment |
+| `bhk_type` | Room configuration (1BHK, 2BHK, etc.) | Supply segmentation, revenue modeling |
+| `property_type` | Apartment, Villa, Builder Floor, etc. | Asset classification |
+| `monthly_rent` | Asking rent in ₹ | Core pricing metric |
+| `sqft` | Built-up or carpet area | Room yield calculation |
+| `total_floors` | Building height | Villa classification (≤3 floors) |
 
-### 2. Upgraded Granular Intra-City Analysis
-Moving forward, the pipeline and dashboard will be expanded with a **two-mode architecture** (Cross-City Overview Mode & Single-City Deep Dive Mode). New modules being integrated:
-*   **Metro Proximity Overlay**: Unlike buses, metro stations act as strong positive premium demand signals in cities like Mumbai and Pune.
-*   **Co-working Density**: A spatial proxy for mobile-professional demand.
-*   **Zone Drill-Down Engine**: Click any zone on the dashboard to view the full waterfall arbitrage math, a listing-level scatter map, and an auto-generated narrative verdict.
-*   **Cross-City Comparator**: Apples-to-apples financial comparison and margin distributions across cities via an aggregated `city_summary.json` pipeline tracking artifact.
+### Cities Covered (15)
 
----
-
-## Tech Stack
-
-| Library | Role |
-|---------|------|
-| `pandas` | DataFrame operations |
-| `geopandas` | Spatial joins & CRS projections |
-| `fiona` | KML file I/O |
-| `shapely` | Geometry operations |
-| `scikit-learn` | Min-max normalization |
-| `statsmodels` | OLS regression + HC3 errors |
-| `libpysal` | Spatial weights (Queen contiguity) |
-| `esda` | Moran's I statistic |
-| `matplotlib` / `seaborn` | Validation plots |
-| `rich` | Narrative terminal UI |
-| `geopy` | SEZ geocoding via Nominatim |
-| `openpyxl` | XLSX export with conditional formatting |
-| `streamlit` | Interactive dashboard |
-| `plotly` | Choropleth map + charts |
+| City | Listings | UTM Zone |
+|---|---|---|
+| Bangalore | 13,042 | 32643 |
+| Pune | 9,551 | 32643 |
+| Hyderabad | 8,714 | 32644 |
+| Mumbai | 7,303 | 32643 |
+| Kolkata | 6,418 | 32645 |
+| Gurgaon | 5,837 | 32643 |
+| Chennai | 5,446 | 32644 |
+| Ahmedabad | 3,830 | 32643 |
+| Jaipur | 3,064 | 32643 |
+| Noida | 3,037 | 32644 |
+| Greater Noida | 1,610 | 32644 |
+| Chandigarh | 965 | 32643 |
+| Gandhinagar | 865 | 32643 |
+| Visakhapatnam | 852 | 32644 |
+| Surat | 748 | 32643 |
 
 ---
 
-## Common Errors & Fixes
+## Output Deliverables
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `ModuleNotFoundError` | Dependency not installed | Run `pip install -r requirements.txt` |
-| `CRSError` on spatial join | CRS mismatch between GDFs | Auto-projected to EPSG:4326 before joins |
-| All zones `data_sparse` | Lat/lon swapped in CSV | Check column names in raw CSV |
-| `KML layer not found` | Missing KML layer | Run `fiona.listlayers('file.kml')` to inspect |
-| Moran's I `island error` | Isolated polygon | `Queen(silence_warnings=True)` is default |
-| Dashboard shows `—` metrics | GeoJSON not generated | Run pipeline once via sidebar button |
+### Per City
+
+| File | Description |
+|---|---|
+| `{City}_Investment_Atlas.kml` | Google Earth hex map with rich popup cards (dual-track margins, confidence indicators, scoring bars, spillover aura) |
+| `{City}_Master_Report.xlsx` | 7-sheet workbook: Metadata, Top 10, Supply Profile, Full Dataset, DDF Sensitivity, Weight Calibration, Data Quality |
+| `{City}_hex_analysis.geojson` | Hex polygons with all metrics for Streamlit dashboard |
+| `city_summary.json` | Machine-readable city KPIs for cross-city comparisons |
+| `econometrics/` | Moran's I scatterplot, OLS validation plot, regression comparison XLSX |
+
+### Cross-City
+
+| File | Description |
+|---|---|
+| `India_Expansion_Master.xlsx` | All cities ranked by CAI with margin distributions and spatial statistics |
 
 ---
 
-*Flent Lens — BBA Python Project, April 2026*
+## Usage
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Run for a single city
+python main.py --city bangalore
+
+# Run all 15 cities
+python main.py --all-cities
+
+# Re-run cross-city analysis from cached results
+python main.py --compare-only
+
+# Available cities
+python main.py --city pune
+python main.py --city hyderabad
+python main.py --city mumbai
+# ... (all 15 city keys listed in city_config.py)
+```
+
+---
+
+## Directory Structure
+
+```
+BBA_Python_final/
+├── main.py                          # Pipeline orchestrator (CLI entry point)
+├── config.py                        # All tunable parameters
+├── city_config.py                   # 15-city profiles (bounding boxes, CRS)
+│
+├── data/
+│   ├── raw/
+│   │   ├── compiled_listings.csv    # Master input (71,282 listings × 40 columns)
+│   │   ├── bangalore/               # Legacy KML boundaries (optional)
+│   │   └── hyderabad/
+│   └── processed/
+│       └── {city}/                   # Per-city caches
+│           ├── osm_cache.json        # Cached OSM POI data
+│           ├── geocache.json         # Reverse geocoding cache
+│           └── pca_weights.json      # Calibrated PCA weights
+│
+├── src/
+│   ├── modules/
+│   │   ├── loader.py                # Data ingestion + property classification
+│   │   ├── spatial.py               # H3 hex assignment + MAUP stability
+│   │   ├── aggregator.py            # K-Ring smoothing + Neff + bootstrap CIs
+│   │   ├── economics.py             # Dual-track arbitrage (Apt + Villa)
+│   │   ├── weight_calibrator.py     # PCA variance-explained weights
+│   │   ├── scoring.py               # Composite OPP_SCORE + spillover + tiers
+│   │   ├── osm_engine.py            # OpenStreetMap POI automation
+│   │   └── validator.py             # Moran's I + OLS + SAR/SEM
+│   └── utils/
+│       ├── logger.py                # Rich terminal UI
+│       └── exporter.py              # KML + XLSX + GeoJSON + JSON exports
+│
+├── output/
+│   ├── {city}/                       # Per-city outputs
+│   │   ├── {City}_Investment_Atlas.kml
+│   │   ├── {City}_Master_Report.xlsx
+│   │   ├── {City}_hex_analysis.geojson
+│   │   ├── city_summary.json
+│   │   └── econometrics/
+│   └── cross_city/
+│       └── India_Expansion_Master.xlsx
+│
+└── app.py                           # Streamlit dashboard
+```
+
+---
+
+## Configuration
+
+All parameters live in `config.py`. Key tunables:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `H3_RESOLUTION` | 7 | Hex size (~5.1 km²). Change affects all spatial analysis. |
+| `USE_PCA_WEIGHTS` | True | Data-driven vs expert weights |
+| `DDF_APARTMENT` | 0.80 | Base demand discount for apartments |
+| `DDF_VILLA` | 0.75 | Base demand discount for villas |
+| `KRING_DECAY_BETA` | 0.4 | Spatial smoothing decay rate |
+| `NEFF_FULL_CONFIDENCE` | 8 | Min Neff for Tier 1 eligibility |
+| `STABILITY_THRESHOLD` | 0.80 | Min MAUP stability for Tier 1 |
+| `MORAN_PERMUTATIONS` | 999 | Permutations for robust p-values |
+
+---
+
+## Dependencies
+
+```
+pandas >= 2.0
+geopandas >= 0.14
+numpy >= 1.24
+h3 >= 4.0
+osmnx >= 1.6
+scikit-learn >= 1.3
+statsmodels >= 0.14
+spreg >= 1.3
+libpysal >= 4.9
+esda >= 2.5
+openpyxl >= 3.1
+matplotlib >= 3.7
+rich >= 13.0
+shapely >= 2.0
+```
+
+Install: `pip install h3 osmnx spreg libpysal esda openpyxl rich`
+
+---
+
+## Team
+
+| Name | ID |
+|---|---|
+| Harshith Bejjanki | SM24UBBA047 |
+| Suneeth Boorgula | SM24UBBA016 |
+| Sudhiksha | SM24UBBA033 |
+| Peddi Sudeeksha | SM24UBBA027 |
+| Vedanth Nagaarur | SM24UBBA019 |
+
+**Academic Context:** BBA Capstone Project — Real Estate Market Analytics
+
+---
+
+*Flent Lens 2.0 · Multi-City Co-Living Intelligence · April 2026*

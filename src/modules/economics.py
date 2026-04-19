@@ -1,118 +1,213 @@
 """
-Flent Lens — Economic Modeling
-Arbitrage margin computation (3BHK + 4BHK), demand intensity,
-supply feasibility, effective margin density, and PSF differential.
+Flent Lens 2.0 — Dual-Track Economic Modeling
+Computes arbitrage margins for both Apartment and Villa sourcing tracks.
+Each hex gets evaluated on both tracks, and the best-performing one is selected.
 """
-import pandas as pd
 import numpy as np
+import pandas as pd
 import config
-from src.utils.logger import print_info, print_detail, log_process
+from src.utils.logger import print_info, print_detail, print_warning, log_process
 
-def compute_arbitrage_margin(df: pd.DataFrame, city_median_1bhk: float) -> pd.DataFrame:
-    with log_process("Computing arbitrage margins (Elastic Conversion Pricing)"):
-        # Elastic Pricing Power: Premium wards can command a higher % of 1BHK rent
-        df['price_pressure'] = (df['avg_rent_1bhk'] / city_median_1bhk) if city_median_1bhk > 0 else 0
-        elastic_discount = config.DEMAND_DISCOUNT_FACTOR * df['price_pressure'].clip(0.90, 1.10)
-        df['demand_discount'] = elastic_discount
-        per_room_revenue = df['avg_rent_1bhk'] * elastic_discount
 
-        # ── 3BHK Conversion: Dynamic Room Yield ──
-        # Large spaces (>1600sqft) yield 4 rooms via living room / servant partition
-        if getattr(config, 'DYNAMIC_YIELD', '').lower() == 'yes':
-            df['yield_multiplier_3bhk'] = np.where(
-                df['avg_sqft_3bhk'] >= config.YIELD_3BHK_XL_SQFT, 4.0, 3.0
-            )
-        else:
-            df['yield_multiplier_3bhk'] = 3.0
-            
-        df['theoretical_3bhk_revenue'] = per_room_revenue * df['yield_multiplier_3bhk']
-        df['arb_margin_3bhk'] = df['theoretical_3bhk_revenue'] - df['avg_rent_3bhk']
-        df['arb_margin_pct_3bhk'] = (df['arb_margin_3bhk'] / df['avg_rent_3bhk']).replace([np.inf, -np.inf], 0).fillna(0)
-        # Guard: zero-out where no 3BHK data exists
-        df.loc[df['avg_rent_3bhk'] <= 0, 'arb_margin_3bhk'] = 0
-        df.loc[df['avg_rent_3bhk'] <= 0, 'arb_margin_pct_3bhk'] = 0
+def _compute_room_yield_apartment(sqft):
+    """Dynamic room yield from apartment sqft."""
+    if sqft >= config.YIELD_APT_XL_SQFT:
+        return 4
+    elif sqft >= config.YIELD_APT_LARGE_SQFT:
+        return 3.5
+    else:
+        return config.YIELD_APT_STANDARD
 
-        # ── 4BHK Conversion: Dynamic Room Yield ──
-        if getattr(config, 'DYNAMIC_YIELD', '').lower() == 'yes':
-            df['yield_multiplier_4bhk'] = np.where(
-                df['avg_sqft_4bhk'] >= config.YIELD_4BHK_XL_SQFT, 5.0, 4.0
-            )
-        else:
-            df['yield_multiplier_4bhk'] = 4.0
-            
-        df['theoretical_4bhk_revenue'] = per_room_revenue * df['yield_multiplier_4bhk']
-        df['arb_margin_4bhk'] = df['theoretical_4bhk_revenue'] - df['avg_rent_4bhk']
-        df['arb_margin_pct_4bhk'] = (df['arb_margin_4bhk'] / df['avg_rent_4bhk']).replace([np.inf, -np.inf], 0).fillna(0)
-        # Guard: zero-out where no 4BHK data exists
-        df.loc[df['avg_rent_4bhk'] <= 0, 'arb_margin_4bhk'] = 0
-        df.loc[df['avg_rent_4bhk'] <= 0, 'arb_margin_pct_4bhk'] = 0
 
-        # ── Best Configuration ──
-        df['arb_margin_best'] = df[['arb_margin_3bhk', 'arb_margin_4bhk']].max(axis=1)
-        df['arb_margin_abs']  = df['arb_margin_best']  # Legacy alias
-        df['arb_margin_pct']  = df['arb_margin_pct_3bhk']  # Primary metric (3BHK)
-        # Override with 4BHK pct if 4BHK is more profitable AND exists
-        mask_4bhk = (df['arb_margin_4bhk'] > df['arb_margin_3bhk']) & (df['avg_rent_4bhk'] > 0)
-        df.loc[mask_4bhk, 'arb_margin_pct'] = df.loc[mask_4bhk, 'arb_margin_pct_4bhk']
+def _compute_room_yield_villa(sqft):
+    """Dynamic room yield from villa sqft."""
+    if sqft >= config.YIELD_VILLA_XL_SQFT:
+        return 6
+    elif sqft >= config.YIELD_VILLA_LARGE_SQFT:
+        return 5
+    else:
+        return config.YIELD_VILLA_BASE
 
-        # ── Viability Check — uses config threshold (default 5%) ──
-        df['margin_viable'] = (
-            (df['arb_margin_pct'] > config.MARGIN_VIABLE_PCT) &
-            (df['avg_sqft_3bhk'] >= config.MIN_SQFT_3BHK)
+
+def _elastic_ddf(base_ddf, price_pressure):
+    """
+    Apply elastic band to DDF based on local price pressure.
+    High demand wards → DDF approaches 0.90 (can charge more)
+    Low demand wards → DDF drops toward 0.70 (must discount more)
+    """
+    band = config.DDF_ELASTIC_BAND
+    adjustment = (price_pressure - 1.0) * band  # pressure=1.0 is city median
+    adjusted = base_ddf + adjustment
+    return np.clip(adjusted, base_ddf - band, base_ddf + band)
+
+
+def compute_dual_track_economics(hex_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each hex, compute:
+      1. Apartment track: margin from 3BHK+ acquisition at Q1, selling rooms at DDF_APT
+      2. Villa track: margin from villa acquisition at Q1, selling rooms at DDF_VILLA
+      3. Best-of selection per hex
+
+    Revenue baseline is always the local (smoothed) 1BHK median rent.
+    """
+    with log_process("Computing dual-track arbitrage economics"):
+        df = hex_df.copy()
+
+        # ──────────────────────────────────────────────────────────
+        # 1. PER-ROOM REVENUE (same for both tracks)
+        # ──────────────────────────────────────────────────────────
+        # Elastic DDF per hex
+        df['ddf_apartment'] = df['price_pressure'].apply(
+            lambda pp: _elastic_ddf(config.DDF_APARTMENT, pp) if pd.notna(pp) else config.DDF_APARTMENT
+        )
+        df['ddf_villa'] = df['price_pressure'].apply(
+            lambda pp: _elastic_ddf(config.DDF_VILLA, pp) if pd.notna(pp) else config.DDF_VILLA
         )
 
-        viable = df['margin_viable'].sum()
-        best   = df['arb_margin_best'].max()
-        print_detail(f"{viable} wards with viable margins (>{config.MARGIN_VIABLE_PCT*100:.0f}%, ≥{config.MIN_SQFT_3BHK} sqft)")
-        print_detail(f"Peak arbitrage margin: ₹{best:,.0f}/month")
-        return df
+        # Per room revenue = smoothed_1bhk_median × DDF
+        df['room_revenue_apt'] = df['avg_rent_1bhk'] * df['ddf_apartment']
+        df['room_revenue_villa'] = df['avg_rent_1bhk'] * df['ddf_villa']
 
+        # ──────────────────────────────────────────────────────────
+        # 2. APARTMENT TRACK
+        # ──────────────────────────────────────────────────────────
+        # Acquisition cost = Q1 of 3BHK+ apartment rents
+        df['acq_cost_apt'] = df['q1_rent_3bhk_apt']
 
-def compute_demand_intensity_index(df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Computing Demand Intensity Index (price pressure + velocity)"):
-        # Price Pressure: already computed in arbitrage_margin
+        # Room yield (based on median sqft of 3BHK stock in this hex)
+        df['rooms_apt'] = df['median_sqft'].apply(
+            lambda s: _compute_room_yield_apartment(s) if pd.notna(s) and s > 0 else 3
+        )
 
-        # Listing Velocity (raw volume proxy)
-        df['listing_velocity'] = df['cnt_1bhk']
+        # Margin = (rooms × per_room_revenue) - acquisition_cost
+        df['arb_margin_apartment'] = (df['rooms_apt'] * df['room_revenue_apt']) - df['acq_cost_apt']
+        df['arb_margin_apt_pct'] = np.where(
+            df['acq_cost_apt'] > 0,
+            df['arb_margin_apartment'] / df['acq_cost_apt'],
+            0
+        )
 
-        high_pressure = (df['price_pressure'] > 1.0).sum()
-        print_detail(f"{high_pressure} wards above city-median price pressure")
-        return df
+        # ──────────────────────────────────────────────────────────
+        # 3. VILLA TRACK
+        # ──────────────────────────────────────────────────────────
+        df['acq_cost_villa'] = df['q1_rent_villa']
 
+        df['rooms_villa'] = df['median_sqft'].apply(
+            lambda s: _compute_room_yield_villa(s) if pd.notna(s) and s >= config.VILLA_MIN_SQFT else 4
+        )
 
-def compute_supply_feasibility_score(df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Computing Supply Feasibility Score (Capital Efficiency / ROI)"):
-        # Size bonus: larger 3BHKs are easier to partition
-        df['size_bonus'] = (df['avg_sqft_3bhk'] / config.LARGE_3BHK_SQFT).clip(0.8, 1.2)
+        df['arb_margin_villa'] = (df['rooms_villa'] * df['room_revenue_villa']) - df['acq_cost_villa']
+        df['arb_margin_villa_pct'] = np.where(
+            df['acq_cost_villa'] > 0,
+            df['arb_margin_villa'] / df['acq_cost_villa'],
+            0
+        )
 
-        # Capital Efficiency (ROI): Replaces flawed entry_score
-        # High ROI = low capital deployed for high absolute margin
-        df['capital_efficiency'] = (df['arb_margin_best'] / df['avg_rent_3bhk']).replace([np.inf, -np.inf], 0).fillna(0)
-        return df
+        # ──────────────────────────────────────────────────────────
+        # 4. BEST-OF SELECTION
+        # ──────────────────────────────────────────────────────────
+        df['arb_margin_apartment'] = df['arb_margin_apartment'].fillna(-999999)
+        df['arb_margin_villa'] = df['arb_margin_villa'].fillna(-999999)
 
+        df['best_asset_type'] = np.where(
+            df['arb_margin_apartment'] >= df['arb_margin_villa'],
+            'apartment', 'villa'
+        )
+        df['arb_margin_best'] = df[['arb_margin_apartment', 'arb_margin_villa']].max(axis=1)
+        df['arb_margin_pct'] = np.where(
+            df['best_asset_type'] == 'apartment',
+            df['arb_margin_apt_pct'],
+            df['arb_margin_villa_pct']
+        )
 
-def compute_effective_margin_density(df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Computing Effective Margin Density per ward"):
-        # EMD per spec: total addressable margin per km² based ONLY on Q1 stock (Flent's target demographic)
-        if 'q1_count' in df.columns:
-            supply_count = df['q1_count'].fillna(0)
-        else:
-            supply_count = (df['cnt_3bhk'] + df['cnt_4bhk']) * 0.25
+        # Replace sentinel values back to NaN for display
+        df.loc[df['arb_margin_apartment'] == -999999, 'arb_margin_apartment'] = np.nan
+        df.loc[df['arb_margin_villa'] == -999999, 'arb_margin_villa'] = np.nan
+        df.loc[df['arb_margin_best'] == -999999, 'arb_margin_best'] = np.nan
 
-        if 'area_sqkm' in df.columns:
-            df['margin_density'] = (
-                df['arb_margin_best'] * supply_count / df['area_sqkm']
-            ).replace([np.inf, -np.inf], 0).fillna(0)
-        else:
-            # Fallback: margin per 1000 sqft
-            df['margin_density'] = (df['arb_margin_best'] / (df['avg_sqft_3bhk'] + 1)) * 1000
+        # ──────────────────────────────────────────────────────────
+        # 5. VIABILITY FLAGS
+        # ──────────────────────────────────────────────────────────
+        df['margin_viable'] = (
+            (df['arb_margin_best'] >= config.MARGIN_VIABLE_FLOOR) &
+            (df['arb_margin_pct'] >= config.MARGIN_VIABLE_PCT)
+        )
 
-        # ── Price-to-Rent Ratio Differential (diagnostic) ──
-        # Per-sqft cost of one "room share" in a 3BHK vs standalone 1BHK
-        room_share_psf = df['avg_rent_3bhk'] / (df['avg_sqft_3bhk'] * 0.33 + 1)
-        df['psf_diff'] = (df['rps_1bhk'] - room_share_psf).replace([np.inf, -np.inf], 0).fillna(0)
+        df['data_sparse'] = df['confidence'] == 'data_insufficient'
 
-        top_emd = df.nlargest(1, 'margin_density')
-        if len(top_emd) > 0:
-            print_detail(f"Highest EMD ward: {top_emd.iloc[0]['ward_id']} (₹{top_emd.iloc[0]['margin_density']:,.0f}/km²)")
+        # ──────────────────────────────────────────────────────────
+        # 6. DEMAND INTENSITY INDEX (DII)
+        # ──────────────────────────────────────────────────────────
+        from sklearn.preprocessing import MinMaxScaler
+
+        def _norm(series):
+            vals = series.fillna(0).values.reshape(-1, 1)
+            if vals.max() == vals.min():
+                return pd.Series(0.0, index=series.index)
+            return pd.Series(MinMaxScaler().fit_transform(vals).ravel(), index=series.index)
+
+        df['norm_price_pressure'] = _norm(df['price_pressure'])
+        df['norm_sfc'] = _norm(df['sfc'])
+        df['norm_psf_diff'] = _norm(df['psf_diff'])
+
+        df['demand_intensity_idx'] = (
+            config.DII_WEIGHT_PRICE_PRESSURE * df['norm_price_pressure'] +
+            config.DII_WEIGHT_SFC * df['norm_sfc'] +
+            config.DII_WEIGHT_PSF_SPREAD * df['norm_psf_diff']
+        )
+
+        # ──────────────────────────────────────────────────────────
+        # 7. SUPPLY FEASIBILITY SCORE (SFS)
+        # ──────────────────────────────────────────────────────────
+        supply_raw = df['cnt_3bhk'] + df['cnt_4bhk'] + df['n_villas']
+        max_supply = supply_raw.max() if supply_raw.max() > 0 else 1
+        df['supply_volume_norm'] = np.log1p(supply_raw) / np.log1p(max_supply)
+        df['size_adequacy'] = df['pct_3bhk_large'].fillna(0)
+
+        # Capital efficiency: margin per unit of acquisition cost
+        df['capital_efficiency'] = np.where(
+            df['acq_cost_apt'] > 0,
+            df['arb_margin_best'] / df['acq_cost_apt'],
+            0
+        )
+        df['capital_efficiency_norm'] = _norm(df['capital_efficiency'])
+
+        df['supply_depth_idx'] = (
+            config.SFS_WEIGHT_VOLUME * df['supply_volume_norm'] +
+            config.SFS_WEIGHT_SIZE * df['size_adequacy'] +
+            config.SFS_WEIGHT_ROI * df['capital_efficiency_norm']
+        )
+
+        # ──────────────────────────────────────────────────────────
+        # 8. MARGIN DENSITY (TAM proxy)
+        # ──────────────────────────────────────────────────────────
+        # Number of Q1 acquisition opportunities × margin, per sq km
+        q1_count = np.maximum(supply_raw * 0.25, 1).astype(int)  # ~25% of supply is Q1
+        df['q1_count'] = q1_count
+        df['margin_density'] = np.where(
+            df['area_sqkm'] > 0,
+            (df['arb_margin_best'].fillna(0) * q1_count) / df['area_sqkm'],
+            0
+        )
+
+        # ──────────────────────────────────────────────────────────
+        # 9. SUPPLY QUARTILE BREAKDOWNS (for Excel export)
+        # ──────────────────────────────────────────────────────────
+        df['demand_discount'] = np.where(
+            df['best_asset_type'] == 'apartment',
+            df['ddf_apartment'],
+            df['ddf_villa']
+        )
+
+        # Stats
+        viable_count = df['margin_viable'].sum()
+        apt_wins = ((df['best_asset_type'] == 'apartment') & df['margin_viable']).sum()
+        villa_wins = ((df['best_asset_type'] == 'villa') & df['margin_viable']).sum()
+        median_margin = df.loc[df['margin_viable'], 'arb_margin_best'].median()
+
+        print_info(f"Viable hexes: [highlight]{viable_count}[/highlight] / {len(df)}")
+        print_detail(f"Best asset: Apartment wins={apt_wins}, Villa wins={villa_wins}")
+        if pd.notna(median_margin):
+            print_detail(f"Median viable margin: ₹{median_margin:,.0f}/mo")
+
         return df

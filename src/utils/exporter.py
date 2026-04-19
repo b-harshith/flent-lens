@@ -1,10 +1,12 @@
 """
-Flent Lens — Export Engine (v2)
-Two clean deliverables:
-  1. flent_investment_atlas.kml  — Layered Google Earth map
-  2. flent_lens_report.xlsx      — 4-sheet Excel workbook for leadership
+Flent Lens 2.0 — Export Engine
+Deliverables:
+  1. {City}_Investment_Atlas.kml  — Hex-grid Google Earth map (rich popups)
+  2. {City}_Master_Report.xlsx    — 7-sheet Excel workbook
+  3. {City}_hex_analysis.geojson  — For Streamlit dashboard
+  4. city_summary.json            — Machine-readable KPIs for cross-city analysis
 """
-import os
+import os, json
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -14,66 +16,14 @@ import config
 from src.utils.logger import print_success, print_warning, print_detail, log_process
 
 # ═══════════════════════════════════════════════════════════════════
-# REPORT COLUMN SCHEMA
-# ═══════════════════════════════════════════════════════════════════
-REPORT_COLUMNS = [
-    'ward_id', 'ward_name', 'tier', 'OPP_SCORE',
-    'cnt_1bhk', 'cnt_2bhk', 'cnt_3bhk', 'cnt_4bhk',
-    'avg_rent_1bhk', 'avg_rent_3bhk', 'avg_rent_4bhk',
-    'avg_sqft_1bhk', 'avg_sqft_3bhk',
-    'arb_margin_3bhk', 'arb_margin_4bhk', 'arb_margin_best',
-    'arb_margin_pct', 'margin_viable', 'margin_density',
-    'price_pressure', 'sfc', 'demand_intensity_idx',
-    'pct_3bhk_xl', 'supply_depth_idx',
-    'transit_score', 'sez_employment_score',
-    'rps_1bhk', 'rps_3bhk', 'psf_diff',
-    'aura_multiplier', 'data_sparse', 'demand_discount',
-]
-
-COLUMN_LABELS = {
-    'ward_id': 'Ward ID', 'ward_name': 'Ward Name', 'tier': 'Investment Tier',
-    'OPP_SCORE': 'Opp Score',
-    'cnt_1bhk': '1BHK #', 'cnt_2bhk': '2BHK #',
-    'cnt_3bhk': '3BHK #', 'cnt_4bhk': '4BHK #',
-    'avg_rent_1bhk': '1BHK Rent (₹)', 'avg_rent_3bhk': '3BHK Acq Cost (₹)',
-    'avg_rent_4bhk': '4BHK Acq Cost (₹)',
-    'avg_sqft_1bhk': '1BHK Sqft', 'avg_sqft_3bhk': '3BHK Sqft',
-    'arb_margin_3bhk': '3BHK Margin (₹)', 'arb_margin_4bhk': '4BHK Margin (₹)',
-    'arb_margin_best': 'Average Margin (₹)', 'arb_margin_pct': 'Margin %',
-    'margin_viable': 'Viable', 'margin_density': 'Margin Density',
-    'price_pressure': 'Price Pressure', 'sfc': 'Small Flat Conc.',
-    'demand_intensity_idx': 'Demand Index', 'pct_3bhk_xl': '% XL 3BHK',
-    'supply_depth_idx': 'Supply Index', 'transit_score': 'Transit Score',
-    'sez_employment_score': 'SEZ Score', 'rps_1bhk': '₹/sqft 1BHK',
-    'rps_3bhk': '₹/sqft 3BHK', 'psf_diff': 'PSF Δ',
-    'aura_multiplier': 'Aura Mult.', 'data_sparse': 'Data Sparse',
-    'demand_discount': 'Demand Discount',
-}
-
-
-def _pick(df, cols):
-    return df[[c for c in cols if c in df.columns]].copy()
-
-def _fmt(val):
-    try:
-        return f"₹{val:,.0f}"
-    except (ValueError, TypeError):
-        return str(val)
-
-def _np_clean(val):
-    if isinstance(val, np.integer):   return int(val)
-    if isinstance(val, np.floating):  return float(val)
-    if isinstance(val, np.bool_):     return bool(val)
-    return val
-
-
-# ═══════════════════════════════════════════════════════════════════
-# KML HELPERS
+# HELPERS
 # ═══════════════════════════════════════════════════════════════════
 KNS = "http://www.opengis.net/kml/2.2"
-
-def _e(tag):
-    return f'{{{KNS}}}{tag}'
+def _e(tag): return f'{{{KNS}}}{tag}'
+def _fmt(v):
+    try: return f"₹{v:,.0f}"
+    except: return str(v)
+def Fk(x): return f"₹{x/1000:.0f}k" if x > 0 else "N/A"
 
 def _kml_doc(title):
     ET.register_namespace('', KNS)
@@ -102,945 +52,644 @@ def _add_polygon(parent, polygon):
     ob = ET.SubElement(pe, _e('outerBoundaryIs'))
     lr = ET.SubElement(ob, _e('LinearRing'))
     ET.SubElement(lr, _e('coordinates')).text = " ".join(
-        f"{coord[0]},{coord[1]},0" for coord in polygon.exterior.coords)
-    for interior in polygon.interiors:
-        ib = ET.SubElement(pe, _e('innerBoundaryIs'))
-        lr2 = ET.SubElement(ib, _e('LinearRing'))
-        ET.SubElement(lr2, _e('coordinates')).text = " ".join(
-            f"{coord[0]},{coord[1]},0" for coord in interior.coords)
+        f"{c[0]},{c[1]},0" for c in polygon.exterior.coords)
 
 def _save_kml(kml, path):
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else '.', exist_ok=True)
     ET.ElementTree(kml).write(path, xml_declaration=True, encoding='utf-8')
 
+def _np(v):
+    if isinstance(v, np.integer): return int(v)
+    if isinstance(v, np.floating): return float(v)
+    if isinstance(v, np.bool_): return bool(v)
+    return v
 
-def _q_score(val):
-    v = float(val)
-    if v >= 80: return f"{v:.1f} (Elite)"
-    if v >= 60: return f"{v:.1f} (Strong)"
-    if v >= 40: return f"{v:.1f} (Moderate)"
-    return f"{v:.1f} (Weak)"
+def _g(r, k, d=0):
+    v = r.get(k, d)
+    return float(v) if pd.notna(v) else d
 
-def _q_idx(val, t1, t2, l1, l2, l3):
-    v = float(val)
-    if v >= t1: return f"{v:.2f} ({l1})"
-    if v >= t2: return f"{v:.2f} ({l2})"
-    return f"{v:.2f} ({l3})"
+def _gi(r, k):
+    return int(_g(r, k, 0))
+
 
 # ═══════════════════════════════════════════════════════════════════
-# WARD POPUP HTML — shared by both layers
+# HEX POPUP HTML — Rich data card for KML & dashboard
 # ═══════════════════════════════════════════════════════════════════
-def _ward_popup(r, tier_colors):
-    wn   = str(r.get('ward_name', r['ward_id']))
+def _hex_popup(r, tier_colors):
+    name = str(r.get('hex_name', r.get('hex_id', '?')[:10]))
     tier = r.get('tier', 'Excluded')
+    tc = tier_colors.get(tier, '#94a3b8')
+    score = _g(r, 'OPP_SCORE')
+    neff = _g(r, 'Neff')
+    stability = _g(r, 'stability_score', 1.0)
+    margin_apt = _g(r, 'arb_margin_apartment')
+    margin_villa = _g(r, 'arb_margin_villa')
+    margin_best = _g(r, 'arb_margin_best')
+    best_asset = r.get('best_asset_type', 'apartment')
+    ddf = _g(r, 'demand_discount', 0.80)
+    rent_1bhk = _g(r, 'avg_rent_1bhk')
+    ci_low = _g(r, 'rent_1bhk_CI_low')
+    ci_high = _g(r, 'rent_1bhk_CI_high')
+    pct_nb = _g(r, 'pct_neighbor_sourced') * 100
+    sample = _gi(r, 'sample_size')
+    demand = _g(r, 'demand_intensity_idx')
+    supply_idx = _g(r, 'supply_depth_idx')
+    transit = _g(r, 'transit_score')
+    employment = _g(r, 'employment_score')
+    lifestyle = _g(r, 'lifestyle_score')
+    osm_conf = _g(r, 'osm_confidence')
+    aura = _g(r, 'aura_multiplier', 1.0)
+    aura_src = r.get('aura_sources', 'None')
+    if pd.isna(aura_src): aura_src = 'None'
+    aura_str = f"+{(aura-1)*100:.1f}%" if aura > 1 else (f"{(aura-1)*100:.1f}%" if aura < 1 else "Neutral")
     
-    # 1. Colors and Badges
-    tc   = tier_colors.get(tier, '#94a3b8')
-    bg_header = '#0f172a'
-    
-    # 2. Extract Data
-    score = r.get('OPP_SCORE', 0)
-    data_sparse = bool(r.get('data_sparse', False))
-    margin_density = r.get('margin_density', 0)
-    margin = r.get('arb_margin_best', 0)
-    area = r.get('area_sqkm', 1.0)
-    
-    def _i(k): 
-        v = r.get(k, 0)
-        return int(float(v)) if pd.notna(v) and v is not None else 0
-    def _f(k):
-        v = r.get(k, 0)
-        return float(v) if pd.notna(v) and v is not None else 0.0
+    nearest_transit = r.get('nearest_transit', (None, None))
+    nearest_office = r.get('nearest_office', (None, None))
+    nearest_lifestyle = r.get('nearest_lifestyle', (None, None))
+    n_apt, n_vil = _gi(r, 'n_acq_apt'), _gi(r, 'n_acq_villa')
+    cnt3, cnt4 = _gi(r, 'cnt_3bhk'), _gi(r, 'cnt_4bhk')
 
-    psf_diff = _f('psf_diff')
-    rps_1bhk = _f('rps_1bhk')
-    rps_3bhk = _f('rps_3bhk')
-    rent_1 = _f('avg_rent_1bhk')
-    psf_diff_pct = (psf_diff / rps_1bhk * 100) if rps_1bhk > 0 else 0
-    demand_discount = _f('demand_discount')
+    # --- Generative AI Executive Summary ---
+    def _gen_narrative():
+        t_name = nearest_transit[0] if isinstance(nearest_transit, tuple) and nearest_transit[0] else None
+        o_name = nearest_office[0] if isinstance(nearest_office, tuple) and nearest_office[0] else None
         
-    supply = _i('cnt_3bhk') + _i('cnt_4bhk')
-    pct_xl = _f('pct_3bhk_xl') * 100
-    
-    q1_rent = _f('q1_avg_rent'); q1_c = _i('q1_count')
-    tam_units = q1_c
-    q2_rent = _f('q2_avg_rent'); q2_c = _i('q2_count')
-    q3_rent = _f('q3_avg_rent'); q3_c = _i('q3_count')
-    q4_rent = _f('q4_avg_rent'); q4_c = _i('q4_count')
-    
-    demand = _f('demand_intensity_idx')
-    transit = _f('transit_score')
-    sez = _f('sez_employment_score')
-    closest_sezs = r.get('closest_sezs', 'No SEZ data available.')
-    aura = _f('aura_multiplier') if _f('aura_multiplier') > 0 else 1.0
-    aura_sources = r.get('aura_sources', 'None')
-    if pd.isna(aura_sources): aura_sources = 'None'
-    aura_str = f"+{(aura-1)*100:.1f}% Spatial Boost" if aura > 1.0 else (f"{(aura-1)*100:.1f}% Penalty" if aura < 1.0 else "No Boost")
-    
-    margin_density = _f('margin_density')
-    margin = _f('arb_margin_best')
-    area = _f('area_sqkm') if _f('area_sqkm') > 0 else 1.0
-    
-    # 3. Format strings
-    def F1(x): return f"₹{x/1000000:.1f}M" if x >= 1000000 else f"₹{x:,.0f}"
-    def Fk(x): return f"₹{x/1000:.0f}k" if x > 0 else "N/A"
-    
-    # 4. Build HTML
-    html = f"""<div style="width: 380px; background: white; border: 1px solid #cbd5e1; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">"""
+        anchor_txt = f" yields anchor at {_fmt(rent_1bhk)}"
+        margin_txt = f"predictable {_fmt(margin_best)} arbitrage margin"
+        
+        story = f"This micro-market yields a {margin_txt}. With 1BHK {anchor_txt}, subdivisions here mathematically support up to an {ddf*100:.1f}% Elastic DDF."
+        
+        if t_name and o_name:
+            story += f" Premium access to {o_name} and {t_name} heavily insulates tenant demand."
+        elif t_name:
+            story += f" Proximity to {t_name} serves as a strong tenant magnet."
+        
+        return story
+
+    html = f"""<div style="width:420px; background:#ffffff; border:1px solid #e2e8f0; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1); border-radius:12px; overflow:hidden; font-family:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">"""
+
+    # --- Header (Gradient matched to Tier) ---
+    grad_map = {
+        'Tier 1': 'linear-gradient(135deg, #14532d 0%, #16a34a 100%)',
+        'Tier 2': 'linear-gradient(135deg, #78350f 0%, #d97706 100%)',
+        'Tier 3': 'linear-gradient(135deg, #7f1d1d 0%, #dc2626 100%)',
+        'Excluded': 'linear-gradient(135deg, #334155 0%, #64748b 100%)'
+    }
+    header_grad = grad_map.get(tier, grad_map['Excluded'])
+
+    html += f"""
+    <div style="background:{header_grad}; padding:18px 20px;">
+        <table style="width:100%; border-collapse:collapse;"><tr>
+            <td style="vertical-align:middle;">
+                <h3 style="margin:0 0 6px 0; font-size:20px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">{name}</h3>
+                <span style="background:rgba(255,255,255,0.2); backdrop-filter:blur(4px); color:#ffffff; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; border:1px solid rgba(255,255,255,0.3);">{tier}</span>
+                <span style="background:#0f172a; color:#f8fafc; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:600; margin-left:6px; border:1px solid rgba(255,255,255,0.1);"><span style="color:#fbbf24;">★</span> {best_asset.title()}s</span>
+            </td>
+            <td style="text-align:right; vertical-align:middle;">
+                <div style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); border-radius:8px; padding:6px 12px; display:inline-block;">
+                    <div style="font-size:26px; font-weight:900; color:#ffffff; line-height:1;">{score:.1f}</div>
+                    <div style="font-size:9px; color:#cbd5e1; text-transform:uppercase; font-weight:700; letter-spacing:0.5px; margin-top:2px;">Opp Score</div>
+                </div>
+            </td>
+        </tr></table>
+    </div>"""
+
+    # --- Confidence Banner ---
+    conf = r.get('confidence', 'unknown')
+    if conf == 'full':
+        conf_badge, conf_bg, conf_tc = '🟢 High Confidence', '#dcfce7', '#166534'
+    elif conf == 'low_confidence':
+        conf_badge, conf_bg, conf_tc = '🟡 Low Confidence', '#fef08a', '#854d0e'
+    else:
+        conf_badge, conf_bg, conf_tc = '🔴 Insufficient Data', '#fee2e2', '#991b1b'
+
+    if conf != 'full':
+        html += f"""
+    <div style="background:{conf_bg}; padding:8px 20px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:12px; color:{conf_tc}; font-weight:700; letter-spacing:0.3px;">{conf_badge}</div>
+        <div style="font-size:11px; color:{conf_tc}; opacity:0.8;">Neff: {neff:.1f} ({pct_nb:.0f}% neighbor avg)</div>
+    </div>"""
+
+    # --- AI Executive Summary & Core Metrics ---
+    stab_color = '#16a34a' if stability >= 0.85 else ('#d97706' if stability >= 0.70 else '#dc2626')
     
     html += f"""
-    <div style="background: {bg_header}; padding: 14px 16px;">
-        <table style="width:100%; border-collapse:collapse;">
-            <tr>
-                <td>
-                    <h3 style="margin:0 0 4px 0; font-size:18px; color: white;">{wn}</h3>
-                    <span style="background:{tc}; color:white; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; text-transform:uppercase;">{tier}</span>
-                </td>
-                <td style="text-align:right;">
-                    <div style="font-size:24px; font-weight:bold; color: {tc};">{score:.1f}</div>
-                    <div style="font-size:10px; color:#cbd5e1; text-transform:uppercase;">Opp Score</div>
-                </td>
+    <div style="padding:16px 20px 8px 20px;">
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:12px; margin-bottom:16px;">
+            <div style="font-size:12px; font-weight:700; color:#166534; margin-bottom:4px;">📊 AI Executive Summary</div>
+            <div style="font-size:11px; color:#15803d; line-height:1.5;">{_gen_narrative()}</div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
+                <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">Arbitrage Margin</div>
+                <div style="font-size:20px; font-weight:800; color:#0f172a;">{_fmt(margin_best)} <span style="font-size:12px; font-weight:500; color:#64748b;">/mo</span></div>
+            </div>
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
+                <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:2px;">1BHK Yield Anchor</div>
+                <div style="font-size:20px; font-weight:800; color:#0f172a;">{_fmt(rent_1bhk)} <span style="font-size:12px; font-weight:500; color:#64748b;">/mo</span></div>
+                <div style="font-size:9px; color:#94a3b8; font-weight:500; margin-top:2px;">CI: {Fk(ci_low)}–{Fk(ci_high)}</div>
+            </div>
+        </div>
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; margin-bottom:16px;">
+            <div>
+                <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Elastic DDF</div>
+                <div style="font-size:15px; font-weight:700; color:#3b82f6;">{ddf*100:.1f}%</div>
+            </div>
+            <div>
+                <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">MAUP Stability</div>
+                <div style="font-size:15px; font-weight:700; color:{stab_color};">{stability:.2f} <span style="font-size:10px; font-weight:500; opacity:0.7;">(Res 6-8)</span></div>
+            </div>
+        </div>
+    """
+
+    # --- Hyper-Local Anchor Points ---
+    def _tr(cat, tpl):
+        if not isinstance(tpl, tuple) or not tpl[0]: return ""
+        name, dist = str(tpl[0]), tpl[1]
+        name = name[:28] + '...' if len(name)>30 else name
+        return f"""
+        <tr style="font-size:11px;">
+            <td style="padding:6px 0;">{cat}</td>
+            <td style="font-weight:600; color:#0f172a;">{name}</td>
+            <td style="text-align:right; color:#94a3b8;">{dist} km</td>
+        </tr>"""
+
+    h_tr = _tr('Transit 🚇', nearest_transit)
+    h_of = _tr('Workplace 🏢', nearest_office)
+    h_lf = _tr('Lifestyle ☕', nearest_lifestyle)
+
+    if h_tr or h_of or h_lf:
+        html += f"""
+        <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:6px;">Hyper-Local Anchor Points</div>
+        <table style="width:100%; text-align:left; border-collapse:collapse; margin-bottom:16px; border-bottom:1px solid #e2e8f0;">
+            <tr style="border-bottom:1px solid #e2e8f0; font-size:10px; color:#64748b; text-transform:uppercase;">
+                <th style="padding:4px 0;">Category</th>
+                <th style="padding:4px 0;">Identity</th>
+                <th style="padding:4px 0; text-align:right;">Dist.</th>
             </tr>
+            {h_tr}{h_of}{h_lf}
         </table>
-    </div>"""
+        """
 
-    if data_sparse:
-        html += """
-    <div style="background: #fef08a; padding: 6px 16px; border-bottom: 1px solid #fde047;">
-        <div style="font-size: 11px; color:#854d0e; font-weight:bold;">⚠️ Low Data Confidence</div>
-        <div style="font-size: 10px; color:#a16207;">Margins projected on &lt; 5 active listings. High variance risk.</div>
-    </div>"""
+    # --- Dual-Track Battle ---
+    apt_bg = '#dcfce7' if best_asset == 'apartment' else 'transparent'
+    vil_bg = '#dcfce7' if best_asset == 'villa' else 'transparent'
+    apt_brd = '#22c55e' if best_asset == 'apartment' else '#e2e8f0'
+    vil_brd = '#22c55e' if best_asset == 'villa' else '#e2e8f0'
 
     html += f"""
-    <div style="padding: 12px 16px 0 16px;">
-        <div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px;">Core Arbitrage Thesis</div>
-        <table style="width:100%; border-collapse:collapse; margin-bottom: 12px;">
+        <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Dual-Track Evaluation</div>
+        <table style="width:100%; border-collapse:separate; border-spacing:0 4px; margin-bottom:16px;">
             <tr>
-                <td style="width:50%; vertical-align:top; border-right: 1px solid #f1f5f9; padding-right:12px; padding-bottom: 10px;">
-                    <div style="font-size: 10px; color: #64748b; font-weight: 600;">Margin Density (TAM)</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #0284c7; margin-bottom: 2px;">{F1(margin_density)} / km²</div>
-                    <div style="font-size: 8px; font-family: monospace; color: #0284c7; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 3px; padding: 2px 4px; margin-bottom: 4px; display: inline-block;">
-                        ({Fk(margin)} × {tam_units} Q1 units) ÷ {area:.1f} km²
+                <td style="width:50%; padding:0 4px 0 0;">
+                    <div style="background:{apt_bg}; border:1px solid {apt_brd}; border-radius:6px; padding:8px;">
+                        <div style="font-size:11px; font-weight:700; color:#0f172a;">🏢 Apartments</div>
+                        <div style="font-size:16px; font-weight:800; color:#16a34a; margin:2px 0;">{_fmt(margin_apt)}</div>
+                        <div style="font-size:10px; color:#64748b; font-weight:500;">Acq Stock: {n_apt}</div>
                     </div>
-                    <div style="font-size: 9px; color: #94a3b8; line-height: 1.2;">Realistic addressable pool if <i>all Q1 (bottom 25%)</i> stock acquired.</div>
                 </td>
-                <td style="width:50%; vertical-align:top; padding-left:12px; padding-bottom: 10px;">
-                    <div style="font-size: 10px; color: #64748b; font-weight: 600;">Average Arb Margin</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #16a34a; margin-bottom: 2px;">{_fmt(margin)} <span style="font-size:11px;color:#94a3b8;">/mo</span></div>
-                    <div style="font-size: 9px; color: #94a3b8; line-height: 1.2;">Yield margin per flat after conversion & discount.</div>
-                </td>
-            </tr>
-            <tr>
-                <td style="width:50%; vertical-align:top; border-right: 1px solid #f1f5f9; padding-right:12px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
-                    <div style="font-size: 10px; color: #64748b; font-weight: 600;">1BHK Median Rent</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #0f172a; margin-bottom: 2px;">{_fmt(rent_1)} <span style="font-size:11px;color:#94a3b8;">/mo</span></div>
-                    <div style="font-size: 9px; color: #94a3b8; line-height: 1.2;">Retail rent baseline for standard 1BHK.</div>
-                </td>
-                <td style="width:50%; vertical-align:top; padding-left:12px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
-                    <div style="font-size: 10px; color: #64748b; font-weight: 600;">Demand Discount</div>
-                    <div style="font-size: 16px; font-weight: bold; color: #0284c7; margin-bottom: 2px;">{demand_discount * 100:.1f}%</div>
-                    <div style="font-size: 9px; color: #94a3b8; line-height: 1.2;">Elastic multiplier based on ward price pressure.</div>
+                <td style="width:50%; padding:0 0 0 4px;">
+                    <div style="background:{vil_bg}; border:1px solid {vil_brd}; border-radius:6px; padding:8px;">
+                        <div style="font-size:11px; font-weight:700; color:#0f172a;">🏡 Villas/Houses</div>
+                        <div style="font-size:16px; font-weight:800; color:#16a34a; margin:2px 0;">{_fmt(margin_villa)}</div>
+                        <div style="font-size:10px; color:#64748b; font-weight:500;">Acq Stock: {n_vil}</div>
+                    </div>
                 </td>
             </tr>
         </table>
-        
-        <div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 8px;">Supply Depth</div>
-        <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
-            <tr>
-                <td style="font-size:12px; color:#475569; padding-bottom:6px;">Available 3BHK+ Stock:</td>
-                <td style="font-size:12px; font-weight:bold; text-align:right; padding-bottom:6px;">{supply} Units</td>
-            </tr>
-            <tr>
-                <td colspan="2">
-                    <table style="width:100%; border-collapse:collapse; text-align:center; border-radius:4px; overflow:hidden;">
-                        <tr style="background:#f1f5f9;">
-                            <td style="width:25%; border-right:1px solid #e2e8f0; padding:4px;"><div style="font-size:11px; font-weight:600; color:#475569;">Q1</div></td>
-                            <td style="width:25%; border-right:1px solid #e2e8f0; padding:4px;"><div style="font-size:11px; font-weight:600; color:#475569;">Q2</div></td>
-                            <td style="width:25%; border-right:1px solid #e2e8f0; padding:4px;"><div style="font-size:11px; font-weight:600; color:#475569;">Q3</div></td>
-                            <td style="width:25%; padding:4px;"><div style="font-size:11px; font-weight:600; color:#475569;">Q4</div></td>
-                        </tr>
-                        <tr style="border:1px solid #e2e8f0; border-top:none;">
-                            <td style="padding:6px 2px; border-right:1px solid #e2e8f0; background:rgba(34,197,94,0.05);"><div style="font-size:13px; font-weight:bold; color:#0f172a;">{Fk(q1_rent)}</div><div style="font-size:9px; color:#64748b;">({q1_c}u)</div></td>
-                            <td style="padding:6px 2px; border-right:1px solid #e2e8f0; background:rgba(34,197,94,0.05);"><div style="font-size:13px; font-weight:bold; color:#0f172a;">{Fk(q2_rent)}</div><div style="font-size:9px; color:#64748b;">({q2_c}u)</div></td>
-                            <td style="padding:6px 2px; border-right:1px solid #e2e8f0;"><div style="font-size:13px; font-weight:bold; color:#0f172a;">{Fk(q3_rent)}</div><div style="font-size:9px; color:#64748b;">({q3_c}u)</div></td>
-                            <td style="padding:6px 2px;"><div style="font-size:13px; font-weight:bold; color:#0f172a;">{Fk(q4_rent)}</div><div style="font-size:9px; color:#64748b;">({q4_c}u)</div></td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="2" style="padding-top:6px;">
-                    <div style="font-size:10px; color:#94a3b8; line-height:1.2;">* {pct_xl:.0f}% of 3BHKs are >2000 sqft (XL) and will yield 4 rooms.</div>
-                </td>
-            </tr>
-        </table>
-"""
-    d_val, d_label = (demand, _q_idx(demand, 0.5, 0.35, 'High', 'Mod', 'Low').split()[0])
+    """
+
+    # --- Micro-Charts (Performance Indices) ---
+    def _bar(label, val, color):
+        pct = int(min(val * 100, 100))
+        # Use highly compatible flat CSS for Google Earth KML engine
+        return f"""
+        <div style="margin-bottom:8px; display:block;">
+            <table style="width:100%; border-collapse:collapse; margin-bottom:4px;"><tr>
+                <td style="font-size:11px; font-weight:600; color:#0f172a;">{label}</td>
+                <td style="text-align:right; font-size:11px; font-weight:800; color:{color};">{val:.2f}</td>
+            </tr></table>
+            <div style="width:100%; height:8px; background-color:#e2e8f0; display:block;">
+                <div style="width:{pct}%; height:8px; background-color:{color}; display:block;"></div>
+            </div>
+        </div>"""
 
     html += f"""
-        <div style="font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 10px;">Market & Location Performance</div>
-        <div style="margin-bottom:12px;">
-            <table style="width:100%; border-collapse:collapse;">
-                <tr><td style="font-size:11px; font-weight:600; color:#334155;">Demand Intensity</td><td style="text-align:right; font-size:11px; font-weight:bold; color:#0f172a;">{d_val:.2f} <span style="font-weight:normal;color:#64748b;">({d_label})</span></td></tr>
-            </table>
-            <div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; margin-top:4px; margin-bottom:2px;"><div style="width:{min(d_val*100, 100)}%; height:4px; background:#f59e0b; border-radius:2px;"></div></div>
-            <div style="font-size:9px; color:#94a3b8;">Relative rent elasticity and low inventory time-on-market.</div>
-        </div>"""
-
-    # ── Transit section (only if transit data is available) ──
-    if config.HAS_TRANSIT:
-        t_val = transit
-        t_label = _q_idx(transit, 0.75, 0.4, 'High', 'Good', 'Basic').split()[0]
-        html += f"""
-        <div style="margin-bottom:12px;">
-            <table style="width:100%; border-collapse:collapse;">
-                <tr><td style="font-size:11px; font-weight:600; color:#334155;">Transit Connectivity</td><td style="text-align:right; font-size:11px; font-weight:bold; color:#0f172a;">{t_val:.2f} <span style="font-weight:normal;color:#64748b;">({t_label})</span></td></tr>
-            </table>
-            <div style="width:100%; height:4px; background:#e2e8f0; border-radius:2px; margin-top:4px; margin-bottom:2px;"><div style="width:{min(t_val*100, 100)}%; height:4px; background:#0284c7; border-radius:2px;"></div></div>
-            <div style="font-size:9px; color:#94a3b8;">Proxy access gravity to arterial bus and metro routes.</div>
-        </div>"""
-
-    # ── SEZ section (only if SEZ data is available) ──
-    if config.HAS_SEZ:
-        s_val = sez
-        html += f"""
-        <div style="background:#fff7ed; padding:10px; border-left:3px solid #f97316; border-radius:0 4px 4px 0; margin-bottom:14px;">
-            <div style="font-size:11px; font-weight:600; color:#c2410c; margin-bottom:4px;">SEZ Employment Gravity Index: {s_val:.2f}</div>
-            <div style="font-size:9px; color:#9a3412; margin-bottom:6px; line-height:1.2;">Proximity gravity modeling to major corporate parks. Nearest hubs:</div>
-            {closest_sezs}
-        </div>"""
-
-    html += "</div>"
-
-    if aura != 1.0:
-        html += f"""
-    <div style="background: #f8fafc; padding: 12px 16px; border-top: 1px solid #e2e8f0;">
-        <table style="width:100%; border-collapse:collapse;">
-            <tr>
-                <td style="font-size:24px; text-align:center; padding-right:12px; width:10%;">✨</td>
-                <td>
-                    <div style="font-size:11px; font-weight:600; color:#334155;">{aura_str}</div>
-                    <div style="font-size:10px; color:#64748b; margin-top:2px;">Spillover value inherited from neighbors: {aura_sources}</div>
-                </td>
-            </tr>
-        </table>
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:16px;">
+        <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; display:flex; justify-content:space-between;">
+            <span>Performance Indices</span>
+            <span style="color:#94a3b8;">OSM Conf: {osm_conf:.2f}</span>
+        </div>
+        {_bar('Demand Intensity', demand, '#f59e0b')}
+        {_bar('Supply Feasibility', supply_idx, '#3b82f6')}
+        {_bar('Transit Proximity', transit, '#0ea5e9')}
+        {_bar('Employment Gravity', employment, '#8b5cf6')}
+        {_bar('Lifestyle Density', lifestyle, '#ec4899')}
     </div>"""
 
-    html += "</div>"
+    # --- Spillover & Footer ---
+    if aura != 1.0:
+        aura_bg = '#fef2f2' if aura < 1 else '#f0fdfa'
+        aura_border = '#fecaca' if aura < 1 else '#ccfbf1'
+        aura_icon = '⚠️' if aura < 1 else '✨'
+        html += f"""
+    <div style="background:{aura_bg}; border-top:1px solid {aura_border}; padding:10px 20px;">
+        <table style="width:100%; border-collapse:collapse;"><tr>
+            <td style="width:24px; vertical-align:top; font-size:16px; padding-top:2px;">{aura_icon}</td>
+            <td>
+                <div style="font-size:12px; font-weight:700; color:#0f172a;">Spatial Spillover <span style="color:{'#14b8a6' if aura>1 else '#ef4444'};">({aura_str})</span></div>
+                <div style="font-size:10px; color:#64748b; font-weight:500; margin-top:2px;">{aura_src}</div>
+            </td>
+        </tr></table>
+    </div>"""
+
+    html += f"""
+    <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:8px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="font-size:10px; color:#64748b; font-weight:600;">{sample} raw listings</div>
+        <div style="font-size:10px; color:#94a3b8; font-weight:500;">Flent Lens 2.0 Engine ⚡</div>
+    </div>
+    </div>"""
     return html
 
 
 # ═══════════════════════════════════════════════════════════════════
-# CONSOLIDATED INVESTMENT ATLAS KML
+# KML EXPORT
 # ═══════════════════════════════════════════════════════════════════
-def export_investment_atlas_kml(df, wards_gdf, listings_gdf,
-                                  filename='flent_investment_atlas.kml'):
+def export_investment_atlas_kml(hex_df, hex_full_gdf, listings_gdf, osm_data=None,
+                                 filename=None):
+    filename = filename or f'{config.CITY_NAME}_Investment_Atlas.kml'
     with log_process(f"Building {config.CITY_NAME} Investment Atlas KML"):
-        kml, doc = _kml_doc(f"Flent Lens — {config.CITY_NAME} Investment Atlas")
+        kml, doc = _kml_doc(f"Flent Lens 2.0 — {config.CITY_NAME} Investment Atlas")
         ET.SubElement(doc, _e('description')).text = (
-            "Flent Lens Ward Opportunity Atlas | "
+            f"H3 Res {config.H3_RESOLUTION} Hex Grid | "
             f"Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 
-        tier_colors_html = {
-            'Tier 1': '#1a8c38', 'Tier 2': '#d4a017', 'Tier 3': '#c0392b', 'Excluded': '#7f8c8d'
-        }
-        # KML AABBGGRR
+        tc_html = {'Tier 1': '#1a8c38', 'Tier 2': '#d4a017', 'Tier 3': '#c0392b', 'Excluded': '#7f8c8d'}
         tier_cfg = {
-            'Tier 1':   {'line': 'FF258c1a', 'poly': 'B21bc455'},
-            'Tier 2':   {'line': 'FF17a0d4', 'poly': 'B2FFD417'},
-            'Tier 3':   {'line': 'FF2b39c0', 'poly': 'B24e70E8'},
+            'Tier 1': {'line': 'FF258c1a', 'poly': 'B21bc455'},
+            'Tier 2': {'line': 'FF17a0d4', 'poly': 'B2FFD417'},
+            'Tier 3': {'line': 'FF2b39c0', 'poly': 'B24e70E8'},
             'Excluded': {'line': 'FF8d8c7f', 'poly': '50A5A5A5'},
         }
-        for tier, c in tier_cfg.items():
-            _add_style(doc, f"poly_{tier.replace(' ', '')}", c['line'], c['poly'], width='1.5')
+        for t, c in tier_cfg.items():
+            _add_style(doc, f"poly_{t.replace(' ', '')}", c['line'], c['poly'])
 
-        # Pin icons
-        pin_icons = {
-            'Tier 1':   ('pin_t1', 'http://maps.google.com/mapfiles/kml/paddle/grn-stars.png'),
-            'Tier 2':   ('pin_t2', 'http://maps.google.com/mapfiles/kml/paddle/ylw-diamond.png'),
-            'Tier 3':   ('pin_t3', 'http://maps.google.com/mapfiles/kml/paddle/red-diamond.png'),
-            'Excluded': ('pin_ex', 'http://maps.google.com/mapfiles/kml/paddle/wht-diamond.png'),
-            'top10':    ('pin_top', 'http://maps.google.com/mapfiles/kml/shapes/star.png'),
-        }
-        for key, (sid, href) in pin_icons.items():
-            scale = '1.2' if key == 'top10' else '0.8'
-            _add_icon_style(doc, sid, href, scale)
+        _add_icon_style(doc, 'pin_top', 'http://maps.google.com/mapfiles/kml/shapes/star.png', '1.2')
 
-        _add_icon_style(doc, 'pin_3bhk', 'http://maps.google.com/mapfiles/kml/paddle/ylw-circle.png', '0.5')
+        merged = hex_full_gdf.copy()
 
-        # Merge geometry from wards_gdf (drop names to avoid _x/_y collision)
-        merged = wards_gdf[['ward_id', 'geometry']].merge(df, on='ward_id')
-
-        # ── LAYER 1: Tier polygon choropleth ──────────────────
+        # Layer 1: Hex polygons
         layer1 = ET.SubElement(doc, _e('Folder'))
-        ET.SubElement(layer1, _e('name')).text = "🗺️ Ward Tier Map"
+        ET.SubElement(layer1, _e('name')).text = "🗺️ Hex Tier Map"
         ET.SubElement(layer1, _e('open')).text = "1"
-
-        for tier_name in ['Tier 1', 'Tier 2', 'Tier 3', 'Excluded']:
-            sub = merged[merged['tier'] == tier_name]
-            if len(sub) == 0:
-                continue
-            sub_folder = ET.SubElement(layer1, _e('Folder'))
-            ET.SubElement(sub_folder, _e('name')).text = f"{tier_name} ({len(sub)} wards)"
-
+        for tn in ['Tier 1', 'Tier 2', 'Tier 3', 'Excluded']:
+            sub = merged[merged['tier'] == tn]
+            if len(sub) == 0: continue
+            sf = ET.SubElement(layer1, _e('Folder'))
+            ET.SubElement(sf, _e('name')).text = f"{tn} ({len(sub)} hexes)"
             for _, r in sub.iterrows():
-                pm = ET.SubElement(sub_folder, _e('Placemark'))
-                # Priority: ward_name, then Name (from KML), then ward_id
-                wn = str(r.get('ward_name', r.get('Name', r['ward_id'])))
-                ET.SubElement(pm, _e('name')).text = wn
-                ET.SubElement(pm, _e('styleUrl')).text = f"#poly_{tier_name.replace(' ', '')}"
-                ET.SubElement(pm, _e('description')).text = _ward_popup(r, tier_colors_html)
-
+                pm = ET.SubElement(sf, _e('Placemark'))
+                ET.SubElement(pm, _e('name')).text = str(r.get('hex_name', r['hex_id'][:10]))
+                ET.SubElement(pm, _e('styleUrl')).text = f"#poly_{tn.replace(' ', '')}"
+                ET.SubElement(pm, _e('description')).text = _hex_popup(r, tc_html)
                 geom = r.geometry
                 if geom.geom_type == 'Polygon':
                     _add_polygon(pm, geom)
                 elif geom.geom_type == 'MultiPolygon':
                     mg = ET.SubElement(pm, _e('MultiGeometry'))
-                    for poly in geom.geoms:
-                        _add_polygon(mg, poly)
+                    for poly in geom.geoms: _add_polygon(mg, poly)
+        print_detail(f"Layer 1: {len(merged)} hex polygons")
 
-        print_detail(f"Layer 1: {len(merged)} ward polygons")
-
-        # ── LAYER 2: Ward analytics centroid pins ──────────────
+        # Layer 2: Top 10 stars
         layer2 = ET.SubElement(doc, _e('Folder'))
-        ET.SubElement(layer2, _e('name')).text = "📍 Ward Analytics Pins"
-        ET.SubElement(layer2, _e('visibility')).text = "0"
-
-        for _, r in merged.iterrows():
-            tier = r.get('tier', 'Excluded')
-            pm = ET.SubElement(layer2, _e('Placemark'))
-            ET.SubElement(pm, _e('name')).text = f"{r.get('ward_name', '')} [{r.get('OPP_SCORE', 0):.0f}]"
-            ET.SubElement(pm, _e('styleUrl')).text = f"#{pin_icons.get(tier, pin_icons['Excluded'])[0]}"
-            ET.SubElement(pm, _e('description')).text = _ward_popup(r, tier_colors_html)
-            cen = r.geometry.centroid
-            pt = ET.SubElement(pm, _e('Point'))
-            ET.SubElement(pt, _e('coordinates')).text = f"{cen.x},{cen.y},0"
-
-        print_detail(f"Layer 2: {len(merged)} analytics pins")
-
-        # ── LAYER 3: 3BHK listings in Tier 1 wards only ────────
-        layer3 = ET.SubElement(doc, _e('Folder'))
-        ET.SubElement(layer3, _e('name')).text = "🏢 3BHK Acquisition Stock (Tier 1 Wards)"
-        ET.SubElement(layer3, _e('visibility')).text = "0"
-
-        tier1_wards = set(merged[merged['tier'] == 'Tier 1']['ward_id'].tolist())
-        listings_3bhk = listings_gdf[
-            (listings_gdf['bhk_type'] == 3) &
-            (listings_gdf['ward_id'].isin(tier1_wards))
-        ]
-
-        for _, r in listings_3bhk.iterrows():
-            pm = ET.SubElement(layer3, _e('Placemark'))
-            ET.SubElement(pm, _e('name')).text = f"3BHK — {_fmt(r['monthly_rent'])}"
-            ET.SubElement(pm, _e('styleUrl')).text = "#pin_3bhk"
-            sqft = r['sqft'] if r.get('sqft', 0) > 0 else 1
-            desc = (
-                f"<div style='font-family:Segoe UI,sans-serif;'>"
-                f"<b>3BHK Acquisition Target</b><br/>"
-                f"<table border='1' cellpadding='4' style='border-collapse:collapse;font-size:12px;margin-top:8px;'>"
-                f"<tr><td>Asking Rent</td><td><b>{_fmt(r['monthly_rent'])}/mo</b></td></tr>"
-                f"<tr><td>Area</td><td>{r.get('sqft', 0):.0f} sqft</td></tr>"
-                f"<tr><td>₹/sqft</td><td>{_fmt(r['monthly_rent']/sqft)}</td></tr>"
-            )
-            if 'listing_url' in r.index and pd.notna(r.get('listing_url')):
-                desc += f"<tr><td>Link</td><td><a href='{r['listing_url']}'>View</a></td></tr>"
-            desc += "</table></div>"
-            ET.SubElement(pm, _e('description')).text = desc
-            pt = ET.SubElement(pm, _e('Point'))
-            ET.SubElement(pt, _e('coordinates')).text = f"{r.geometry.x},{r.geometry.y},0"
-
-        print_detail(f"Layer 3: {len(listings_3bhk)} 3BHK listings in Tier 1 wards")
-
-        # ── LAYER 4: Top 10 Star callouts ──────────────────────
-        layer4 = ET.SubElement(doc, _e('Folder'))
-        ET.SubElement(layer4, _e('name')).text = "🏆 Top 10 Priority Targets"
-        ET.SubElement(layer4, _e('open')).text = "1"
-
+        ET.SubElement(layer2, _e('name')).text = "🏆 Top 10 Priority Targets"
+        ET.SubElement(layer2, _e('open')).text = "1"
         top10 = merged[merged['tier'] == 'Tier 1'].sort_values('OPP_SCORE', ascending=False).head(10)
-        if len(top10) == 0:
-            top10 = merged.sort_values('OPP_SCORE', ascending=False).head(10)
-
+        if len(top10) == 0: top10 = merged.sort_values('OPP_SCORE', ascending=False).head(10)
         for rank, (_, r) in enumerate(top10.iterrows(), 1):
-            pm = ET.SubElement(layer4, _e('Placemark'))
-            ET.SubElement(pm, _e('name')).text = f"#{rank}  {r.get('ward_name', '')}"
+            pm = ET.SubElement(layer2, _e('Placemark'))
+            ET.SubElement(pm, _e('name')).text = f"#{rank}  {r.get('hex_name', '')}"
             ET.SubElement(pm, _e('styleUrl')).text = "#pin_top"
-            ET.SubElement(pm, _e('description')).text = (
-                f"<b>Rank #{rank}</b><br/>" + _ward_popup(r, tier_colors_html))
+            ET.SubElement(pm, _e('description')).text = f"<b>Rank #{rank}</b><br/>" + _hex_popup(r, tc_html)
             cen = r.geometry.centroid
             pt = ET.SubElement(pm, _e('Point'))
             ET.SubElement(pt, _e('coordinates')).text = f"{cen.x},{cen.y},0"
 
-        print_detail(f"Layer 4: {len(top10)} Top 10 callouts")
+        # Layer 3: Infrastructure Summary (Aggregated at Centroids)
+        if osm_data:
+            osm_layer = ET.SubElement(doc, _e('Folder'))
+            ET.SubElement(osm_layer, _e('name')).text = "📊 Infrastructure Summary"
+            ET.SubElement(osm_layer, _e('open')).text = "0"
+
+            # Group POIs for calculation
+            work_pts = np.array([[p['lat'], p['lon']] for p in osm_data.get('offices', []) + osm_data.get('commercial', [])])
+            tran_pts = np.array([[p['lat'], p['lon']] for p in osm_data.get('metro_stations', []) + osm_data.get('bus_stops', [])])
+            life_pts = np.array([[p['lat'], p['lon']] for p in osm_data.get('cafes', []) + osm_data.get('gyms', []) + osm_data.get('supermarkets', [])])
+
+            _add_icon_style(doc, 'pin_infra', 'http://maps.google.com/mapfiles/kml/shapes/info-i.png', '1.0')
+
+            def _fast_count(pts, lat, lon, radius_km=2.0):
+                if len(pts) == 0: return 0
+                dlat = pts[:,0] - lat
+                dlon = pts[:,1] - lon
+                # Quick haversine approximation
+                dist = np.sqrt((dlat * 111.32)**2 + (dlon * 111.32 * np.cos(np.radians(lat)))**2)
+                return int((dist <= radius_km).sum())
+
+            for _, r in merged.iterrows():
+                cen = r.geometry.centroid
+                
+                nw = _fast_count(work_pts, cen.y, cen.x)
+                nt = _fast_count(tran_pts, cen.y, cen.x)
+                nl = _fast_count(life_pts, cen.y, cen.x)
+                
+                if (nw + nt + nl) == 0: continue
+
+                pm = ET.SubElement(osm_layer, _e('Placemark'))
+                ET.SubElement(pm, _e('name')).text = f"📍 Infra: {r.get('hex_name', '')}"
+                ET.SubElement(pm, _e('styleUrl')).text = "#pin_infra"
+                
+                desc = f"""
+                <div style="width:250px; font-family:sans-serif; padding:10px;">
+                    <b style="font-size:14px; color:#1e293b;">Local Infrastructure Summary</b><br/>
+                    <div style="color:#64748b; font-size:12px; margin-bottom:10px;">Within 2km radius</div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <tr style="border-bottom:1px solid #e2e8f0;">
+                            <td style="padding:6px 0;">🏢 Workplaces</td>
+                            <td style="text-align:right; font-weight:700; color:#0f172a;">{nw}</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #e2e8f0;">
+                            <td style="padding:6px 0;">🚇 Transit Hubs</td>
+                            <td style="text-align:right; font-weight:700; color:#0f172a;">{nt}</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #e2e8f0;">
+                            <td style="padding:6px 0;">☕ Lifestyle</td>
+                            <td style="text-align:right; font-weight:700; color:#0f172a;">{nl}</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top:10px; font-size:11px; color:#94a3b8;">
+                        Total Amenities: {nw+nt+nl}
+                    </div>
+                </div>
+                """
+                ET.SubElement(pm, _e('description')).text = desc
+                pt = ET.SubElement(pm, _e('Point'))
+                ET.SubElement(pt, _e('coordinates')).text = f"{cen.x},{cen.y},0"
 
         path = os.path.join(config.OUTPUT_DIR, filename)
         os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         _save_kml(kml, path)
-        print_success(f"Investment Atlas KML → [highlight]{os.path.basename(path)}[/] (4 layers)")
+        print_success(f"KML Atlas → {os.path.basename(path)}")
         return path
 
 
 # ═══════════════════════════════════════════════════════════════════
-# CONSOLIDATED 4-SHEET EXCEL REPORT
+# XLSX EXPORT (7 sheets)
 # ═══════════════════════════════════════════════════════════════════
-def export_lens_report_xlsx(df, stage_df, ols_model=None, morans_result=None,
-                              filename='flent_lens_report.xlsx'):
-    with log_process("Building Flent Lens Excel Report (4 sheets)"):
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from openpyxl.formatting.rule import ColorScaleRule
-            from openpyxl.utils import get_column_letter
-            from openpyxl.chart import BarChart, Reference
-        except ModuleNotFoundError:
-            import subprocess, sys
-            print_warning("openpyxl not found — auto-installing for this interpreter...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl", "--quiet"])
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from openpyxl.formatting.rule import ColorScaleRule
-            from openpyxl.utils import get_column_letter
-            from openpyxl.chart import BarChart, Reference
-        except Exception as import_err:
-            import traceback
-            print_warning(f"openpyxl import failed: {import_err}")
-            traceback.print_exc()
-            return None
+def export_lens_report_xlsx(hex_df, ols_model=None, moran=None, sar_model=None,
+                              pca_weights=None, filename=None):
+    filename = filename or f'{config.CITY_NAME}_Master_Report.xlsx'
+    with log_process(f"Building {config.CITY_NAME} Master Report XLSX"):
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.formatting.rule import ColorScaleRule
 
-        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         path = os.path.join(config.OUTPUT_DIR, filename)
-
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
         wb = Workbook()
 
-        # ── Shared style primitives ──────────────────────────────
-        def hdr(color='1F4E79'):
-            return Font(name='Aptos', bold=True, color='FFFFFF', size=11), \
-                   PatternFill('solid', fgColor=color)
-
-        def fill(color):
-            return PatternFill('solid', fgColor=color)
-
-        def border():
-            s = Side('thin', color='D5D5D5')
-            return Border(left=s, right=s, top=s, bottom=s)
-
-        thin = border()
+        thin = Border(left=Side('thin', color='D5D5D5'), right=Side('thin', color='D5D5D5'),
+                      top=Side('thin', color='D5D5D5'), bottom=Side('thin', color='D5D5D5'))
+        hdr_font = Font(name='Aptos', bold=True, color='FFFFFF', size=11)
         cell_font = Font(name='Aptos', size=10)
-        tier_fills = {
-            'Tier 1':   fill('C6EFCE'),
-            'Tier 2':   fill('FFEB9C'),
-            'Tier 3':   fill('FFCCCC'),
-            'Excluded': fill('EEEEEE'),
-        }
+        tier_fills = {'Tier 1': PatternFill('solid', fgColor='C6EFCE'), 'Tier 2': PatternFill('solid', fgColor='FFEB9C'),
+                      'Tier 3': PatternFill('solid', fgColor='FFCCCC'), 'Excluded': PatternFill('solid', fgColor='EEEEEE')}
 
-        # ── Qualitative Number Formats ──
-        QUAL_FORMATS = {
-            'Score': '[>=80]0.0" (Elite)";[>=60]0.0" (Strong)";0.0" (Mod/Weak)"',
-            'Opp Score': '[>=80]0.0" (Elite)";[>=60]0.0" (Strong)";0.0" (Mod/Weak)"',
-            'Final Score': '[>=80]0.0" (Elite)";[>=60]0.0" (Strong)";0.0" (Mod/Weak)"',
-            'Base Score\n(Econ+DII+SFS)': '[>=80]0.0" (Elite)";[>=60]0.0" (Strong)";0.0" (Mod/Weak)"',
-            'Score After Aura': '[>=80]0.0" (Elite)";[>=60]0.0" (Strong)";0.0" (Mod/Weak)"',
-            'Transit Score': '[>=0.75]0.00" (High)";[>=0.40]0.00" (Good)";0.00" (Basic)"',
-            'Transit': '[>=0.75]0.00" (High)";[>=0.40]0.00" (Good)";0.00" (Basic)"',
-            'Demand Index': '[>=0.50]0.00" (High)";[>=0.30]0.00" (Mod)";0.00" (Low)"',
-            'SEZ Score': '[>=0.70]0.00" (Core)";[>=0.30]0.00" (Conn)";0.00" (Peri)"',
-            'Best Margin (₹)': '[>=25000]"₹"#,##0" (Elite)";[>=15000]"₹"#,##0" (Strong)";"₹"#,##0" (Mod)"',
-            '3BHK Margin (₹)': '[>=25000]"₹"#,##0" (Elite)";[>=15000]"₹"#,##0" (Strong)";"₹"#,##0" (Mod)"',
-            '1BHK Retail (₹)': '"₹"#,##0',
-            '3BHK Monthly Acq (₹)': '"₹"#,##0',
-            'Margin %': '0.0%',
-            'Aura Mult.': '0.00"x"',
-            'Aura Multiplier': '0.00"x"'
-        }
-
-        def write_header_row(ws, headers, bg='1F4E79', row=1):
-            hf, hfill = hdr(bg)
-            for ci, h in enumerate(headers, 1):
-                c = ws.cell(row=row, column=ci, value=h)
-                c.font = hf
-                c.fill = hfill
-                c.border = thin
+        def write_sheet(ws, df, cols, labels, bg='1F4E79'):
+            hfill = PatternFill('solid', fgColor=bg)
+            for ci, h in enumerate(labels, 1):
+                c = ws.cell(row=1, column=ci, value=h)
+                c.font = hdr_font; c.fill = hfill; c.border = thin
                 c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            for ri, (_, row) in enumerate(df.iterrows(), 2):
+                for ci, col in enumerate(cols, 1):
+                    v = _np(row.get(col, ''))
+                    c = ws.cell(row=ri, column=ci, value=v)
+                    c.font = cell_font; c.border = thin
+                    if col == 'tier' and v in tier_fills:
+                        c.fill = tier_fills[v]
+            for ci in range(1, len(labels) + 1):
+                ws.column_dimensions[get_column_letter(ci)].width = 16
+            ws.freeze_panes = 'A2'
 
-        def write_data_row(ws, ri, values, headers, tier=None):
-            for ci, val in enumerate(values, 1):
-                val = _np_clean(val)
-                c = ws.cell(row=ri, column=ci, value=val)
-                c.font = cell_font
-                c.border = thin
-                c.alignment = Alignment(vertical='center')
+        # Sheet 0: Metadata
+        ws0 = wb.active; ws0.title = "📋 Run Metadata"; ws0.sheet_properties.tabColor = '1F4E79'
+        meta = [("City", config.CITY_NAME), ("Timestamp", datetime.now().isoformat()),
+                ("H3 Resolution", config.H3_RESOLUTION), ("K-Ring", config.KRING_RADIUS),
+                ("Smoothing β", config.KRING_DECAY_BETA), ("DDF Apartment", config.DDF_APARTMENT),
+                ("DDF Villa", config.DDF_VILLA), ("PCA Weights", config.USE_PCA_WEIGHTS),
+                ("Total Listings", int(hex_df['sample_size'].sum())),
+                ("Total Hexes", len(hex_df)),
+                ("Viable Hexes", int(hex_df['margin_viable'].sum()))]
+        for ri, (k, v) in enumerate(meta, 1):
+            ws0.cell(row=ri, column=1, value=k).font = Font(name='Aptos', bold=True)
+            ws0.cell(row=ri, column=2, value=str(v))
+        ws0.column_dimensions['A'].width = 24; ws0.column_dimensions['B'].width = 40
 
-                # Apply qualitative text formatting while retaining the raw numeric value
-                h_name = headers[ci - 1] if ci - 1 < len(headers) else ''
-                if h_name in QUAL_FORMATS and isinstance(val, (int, float)):
-                    c.number_format = QUAL_FORMATS[h_name]
-                elif h_name in ['1BHK Rent (₹)', '3BHK Acq Cost (₹)', '4BHK Acq Cost (₹)', 'Best Margin (₹)', '3BHK Margin (₹)'] and isinstance(val, (int, float)):
-                    c.number_format = '"₹"#,##0'
+        # Sheet 1: Executive Summary (Top 10)
+        ws1 = wb.create_sheet("🏆 Top 10"); ws1.sheet_properties.tabColor = '00B050'
+        top10 = hex_df[hex_df['tier'] == 'Tier 1'].sort_values('OPP_SCORE', ascending=False).head(10)
+        if len(top10) == 0: top10 = hex_df.sort_values('OPP_SCORE', ascending=False).head(10)
+        cols1 = ['hex_name', 'tier', 'OPP_SCORE', 'arb_margin_best', 'best_asset_type',
+                 'avg_rent_1bhk', 'Neff', 'stability_score', 'demand_intensity_idx']
+        write_sheet(ws1, top10, cols1, ['Zone', 'Tier', 'Score', 'Margin (₹)', 'Asset',
+                                         '1BHK Rent', 'Neff', 'Stability', 'Demand'], bg='00B050')
 
-                if tier and h_name == 'Tier' and tier in tier_fills:
-                    c.fill = tier_fills[tier]
-                    c.font = Font(name='Aptos', size=10, bold=True)
-                elif tier and h_name == 'Investment Tier' and tier in tier_fills:
-                    c.fill = tier_fills[tier]
-                    c.font = Font(name='Aptos', size=10, bold=True)
+        # Sheet 2: Supply Profiling
+        ws2 = wb.create_sheet("📊 Supply Profile"); ws2.sheet_properties.tabColor = '7030A0'
+        cols2 = ['hex_name', 'cnt_1bhk', 'cnt_2bhk', 'cnt_3bhk', 'cnt_4bhk',
+                 'n_apartments', 'n_villas', 'median_rent_1bhk', 'q1_rent_3bhk_apt',
+                 'q1_rent_villa', 'median_sqft', 'pct_3bhk_large']
+        labels2 = ['Zone', '1BHK#', '2BHK#', '3BHK#', '4BHK#', 'Apts', 'Villas',
+                    'Med 1BHK', 'Q1 3BHK', 'Q1 Villa', 'Med Sqft', '%Large']
+        write_sheet(ws2, hex_df.sort_values('total_listings', ascending=False), cols2, labels2, bg='7030A0')
 
-        def autowidth(ws, max_col=None, sample_rows=20):
-            max_col = max_col or ws.max_column
-            for ci in range(1, max_col + 1):
-                letter = get_column_letter(ci)
-                mx = max(
-                    len(str(ws.cell(row=r, column=ci).value or ''))
-                    for r in range(1, min(sample_rows, ws.max_row) + 1)
-                )
-                ws.column_dimensions[letter].width = min(max(mx + 2, 10), 32)
+        # Sheet 3: Full Hex Dataset
+        ws3 = wb.create_sheet("📈 Full Dataset"); ws3.sheet_properties.tabColor = '1F4E79'
+        full_cols = ['hex_id', 'hex_name', 'tier', 'OPP_SCORE', 'sample_size', 'Neff',
+                     'pct_neighbor_sourced', 'confidence', 'stability_score',
+                     'avg_rent_1bhk', 'rent_1bhk_CI_low', 'rent_1bhk_CI_high',
+                     'arb_margin_apartment', 'arb_margin_villa', 'arb_margin_best', 'best_asset_type',
+                     'demand_intensity_idx', 'supply_depth_idx',
+                     'transit_score', 'employment_score', 'lifestyle_score', 'osm_confidence',
+                     'aura_multiplier', 'centroid_lat', 'centroid_lon']
+        avail = [c for c in full_cols if c in hex_df.columns]
+        write_sheet(ws3, hex_df.sort_values('OPP_SCORE', ascending=False), avail, avail)
 
-        def colorscale(ws, col_letter, nrows):
-            ws.conditional_formatting.add(
-                f'{col_letter}2:{col_letter}{nrows}',
-                ColorScaleRule(
-                    start_type='min', start_color='F8696B',
-                    mid_type='percentile', mid_value=50, mid_color='FFEB84',
-                    end_type='max', end_color='63BE7B'))
+        # Sheet 4: DDF Sensitivity
+        ws4 = wb.create_sheet("🔬 DDF Sensitivity"); ws4.sheet_properties.tabColor = 'FF6600'
+        top_hexes = top10[['hex_name', 'avg_rent_1bhk', 'q1_rent_3bhk_apt', 'median_sqft']].copy()
+        sens_rows = []
+        for _, r in top_hexes.iterrows():
+            for ddf_val in config.DDF_SENSITIVITY_RANGE:
+                rooms = 3 if (r.get('median_sqft', 0) or 0) < 1400 else 4
+                revenue = (r.get('avg_rent_1bhk', 0) or 0) * ddf_val * rooms
+                acq = r.get('q1_rent_3bhk_apt', 0) or 0
+                margin = revenue - acq
+                sens_rows.append({'Zone': r['hex_name'], 'DDF': ddf_val, 'Rooms': rooms,
+                                  'Revenue': revenue, 'Acq Cost': acq, 'Margin': margin})
+        sens_df = pd.DataFrame(sens_rows)
+        if len(sens_df) > 0:
+            write_sheet(ws4, sens_df, sens_df.columns.tolist(), sens_df.columns.tolist(), bg='FF6600')
 
-        # ══════════════════════════════════════════════════════════
-        # SHEET 1 — TOP 10 EXECUTIVE TARGETS
-        # ══════════════════════════════════════════════════════════
-        ws1 = wb.active
-        ws1.title = "🏆 Top 10 Targets"
-        ws1.sheet_properties.tabColor = '00B050'
-        ws1.row_dimensions[1].height = 30
+        # Sheet 5: Weight Calibration
+        ws5 = wb.create_sheet("⚖️ Weights"); ws5.sheet_properties.tabColor = '333333'
+        r = 1
+        if pca_weights:
+            for index_name, weights in pca_weights.items():
+                if weights is None: continue
+                ws5.cell(row=r, column=1, value=index_name).font = Font(name='Aptos', bold=True, size=12)
+                r += 1
+                for feat, w in weights.items():
+                    ws5.cell(row=r, column=1, value=feat)
+                    ws5.cell(row=r, column=2, value=round(w, 4))
+                    r += 1
+                r += 1
+        ws5.column_dimensions['A'].width = 30; ws5.column_dimensions['B'].width = 16
 
-        top10_df = df[df['tier'] == 'Tier 1'].sort_values('OPP_SCORE', ascending=False).head(10)
-        if len(top10_df) == 0:
-            top10_df = df.sort_values('OPP_SCORE', ascending=False).head(10)
+        # Sheet 6: Data Quality
+        ws6 = wb.create_sheet("📊 Data Quality"); ws6.sheet_properties.tabColor = 'C00000'
+        dq_cols = ['hex_name', 'sample_size', 'Neff', 'pct_neighbor_sourced', 'confidence',
+                   'stability_score', 'osm_confidence']
+        dq_avail = [c for c in dq_cols if c in hex_df.columns]
+        write_sheet(ws6, hex_df.sort_values('Neff', ascending=True), dq_avail, dq_avail, bg='C00000')
 
-        top10_cols = ['ward_name', 'tier', 'OPP_SCORE', 'arb_margin_best',
-                      'avg_rent_1bhk', 'avg_rent_3bhk',
-                      'cnt_3bhk', 'cnt_4bhk', 'demand_intensity_idx']
-        top10_labels = ['Rank', 'Ward', 'Tier', 'Score', 'Best Margin (₹)',
-                        '1BHK Retail (₹)', '3BHK Monthly Acq (₹)',
-                        '3BHK #', '4BHK #', 'Demand Index']
+        wb.save(path)
+        print_success(f"XLSX Report → {os.path.basename(path)} (7 sheets)")
+        return path
 
-        if config.HAS_TRANSIT:
-            top10_cols.append('transit_score')
-            top10_labels.append('Transit')
-        if config.HAS_SEZ:
-            top10_cols.append('sez_employment_score')
-            top10_labels.append('SEZ Score')
-        top10_cols.append('aura_multiplier')
-        top10_labels.append('Aura Mult.')
 
-        write_header_row(ws1, top10_labels, bg='00B050', row=1)
+# ═══════════════════════════════════════════════════════════════════
+# GEOJSON EXPORT
+# ═══════════════════════════════════════════════════════════════════
+def export_hex_geojson(hex_full_gdf, filename=None):
+    filename = filename or f'{config.CITY_NAME}_hex_analysis.geojson'
+    with log_process("Exporting GeoJSON"):
+        path = os.path.join(config.OUTPUT_DIR, filename)
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+        # Drop non-serializable columns
+        export_gdf = hex_full_gdf.copy()
+        for col in export_gdf.columns:
+            if export_gdf[col].dtype == object:
+                export_gdf[col] = export_gdf[col].astype(str)
+        export_gdf.to_file(path, driver='GeoJSON')
+        print_success(f"GeoJSON → {os.path.basename(path)}")
+        return path
 
-        for rank, (_, row) in enumerate(top10_df.iterrows(), 1):
-            ri = rank + 1
-            # Prepend Rank to the data row
-            vals = [rank] + [_np_clean(row.get(c, '')) for c in top10_cols]
-            write_data_row(ws1, ri, vals, top10_labels, tier=row.get('tier'))
 
-        ws1.freeze_panes = 'B2'
-        ws1.row_dimensions[1].height = 28
-        autowidth(ws1)
+# ═══════════════════════════════════════════════════════════════════
+# CITY SUMMARY JSON
+# ═══════════════════════════════════════════════════════════════════
+def export_city_summary(hex_df, moran=None, ols_model=None, sar_model=None):
+    with log_process("Writing city_summary.json"):
+        viable = hex_df[hex_df['margin_viable']]
+        summary = {
+            'city': config.CITY_NAME,
+            'city_key': config.CITY_KEY,
+            'run_timestamp': datetime.now().isoformat(),
+            'h3_resolution': config.H3_RESOLUTION,
+            'total_listings': int(hex_df['sample_size'].sum()),
+            'total_hexes': len(hex_df),
+            'viable_hexes': len(viable),
+            'tier1_count': int((hex_df['tier'] == 'Tier 1').sum()),
+            'tier2_count': int((hex_df['tier'] == 'Tier 2').sum()),
+            'median_arb_margin': float(viable['arb_margin_best'].median()) if len(viable) > 0 else 0,
+            'max_arb_margin': float(viable['arb_margin_best'].max()) if len(viable) > 0 else 0,
+            'median_1bhk_rent': float(hex_df['avg_rent_1bhk'].median()) if hex_df['avg_rent_1bhk'].notna().any() else 0,
+            'moran_i': float(moran.I) if moran else None,
+            'moran_p': float(moran.p_sim) if moran else None,
+            'ols_slope': float(ols_model.params[1]) if ols_model else None,
+            'ols_r2': float(ols_model.rsquared) if ols_model else None,
+            'sar_rho': float(sar_model.betas[-1][0]) if sar_model else None,
+            'pct_villa_wins': float((viable['best_asset_type'] == 'villa').mean() * 100) if len(viable) > 0 else 0,
+        }
+        path = os.path.join(config.OUTPUT_DIR, 'city_summary.json')
+        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(summary, f, indent=2, default=str)
+        print_success(f"city_summary.json → {os.path.basename(path)}")
+        return summary
 
-        # ══════════════════════════════════════════════════════════
-        # SHEET 2 — FULL ANALYSIS (all wards)
-        # ══════════════════════════════════════════════════════════
-        ws2 = wb.create_sheet("📊 Full Analysis")
-        ws2.sheet_properties.tabColor = '1F4E79'
 
-        out = _pick(df, REPORT_COLUMNS).sort_values('OPP_SCORE', ascending=False)
-        nums = out.select_dtypes(include=[np.number]).columns
-        out[nums] = out[nums].round(2)
+def load_cached_summaries():
+    """Load city_summary.json from all city output dirs."""
+    from city_config import CITY_PROFILES, BASE_DIR
+    summaries = []
+    for key in CITY_PROFILES:
+        path = os.path.join(BASE_DIR, 'output', key, 'city_summary.json')
+        if os.path.exists(path):
+            with open(path) as f:
+                summaries.append(json.load(f))
+    return summaries
 
-        headers2 = [COLUMN_LABELS.get(c, c) for c in out.columns]
-        write_header_row(ws2, headers2)
 
-        for ri, (_, row) in enumerate(out.iterrows(), 2):
-            vals = [_np_clean(row[c]) for c in out.columns]
-            write_data_row(ws2, ri, vals, headers2, tier=row.get('tier'))
-
-        ws2.freeze_panes = 'A2'
-        autowidth(ws2)
-
-        # Color scale on OPP_SCORE
-        if 'OPP_SCORE' in out.columns:
-            ci = list(out.columns).index('OPP_SCORE') + 1
-            colorscale(ws2, get_column_letter(ci), ws2.max_row)
-
-        # ══════════════════════════════════════════════════════════
-        # SHEET 3 — STAGE BREAKDOWN
-        # ══════════════════════════════════════════════════════════
-        ws3 = wb.create_sheet("📈 Stage Breakdown")
-        ws3.sheet_properties.tabColor = '7030A0'
-
-        stage_cols   = ['ward_name', 'score_base']
-        stage_labels = ['Ward', 'Base Score\n(Econ+DII+SFS)']
-        if config.HAS_TRANSIT:
-            stage_cols.append('transit_score')
-            stage_labels.append('Transit Score')
-        if config.HAS_SEZ:
-            stage_cols.append('sez_employment_score')
-            stage_labels.append('SEZ Score')
-        stage_cols   += ['aura_multiplier', 'score_after_aura', 'score_final', 'tier', 'arb_margin_best']
-        stage_labels += ['Aura Multiplier', 'Score After Aura', 'Final Score', 'Tier', 'Best Margin (₹)']
-
-        write_header_row(ws3, stage_labels, bg='7030A0')
-
-        stage_out = stage_df.copy()
-        # Sort by final score
-        if 'score_final' in stage_out.columns:
-            stage_out = stage_out.sort_values('score_final', ascending=False)
-
-        for ri, (_, row) in enumerate(stage_out.iterrows(), 2):
-            tier = row.get('tier', 'Excluded')
-            vals = [_np_clean(row.get(c, '')) for c in stage_cols]
-            write_data_row(ws3, ri, vals, stage_labels, tier=tier)
-
-        ws3.freeze_panes = 'B2'
-        ws3.row_dimensions[1].height = 40
-        autowidth(ws3)
-
-        # Progress bar color scale on score columns
-        for col_name in ['score_base', 'score_after_aura', 'score_final']:
-            if col_name in stage_cols:
-                ci = stage_cols.index(col_name) + 1
-                colorscale(ws3, get_column_letter(ci), ws3.max_row)
-
-        # ══════════════════════════════════════════════════════════
-        # SHEET 4 — OLS ARBITRAGE EVIDENCE
-        # ══════════════════════════════════════════════════════════
-        ws4 = wb.create_sheet("📐 OLS Evidence")
-        ws4.sheet_properties.tabColor = 'FF6600'
-
-        def label_val(ws, row, label, value, label_bg='FF6600'):
-            lc = ws.cell(row=row, column=1, value=label)
-            lc.font = Font(name='Aptos', bold=True, color='FFFFFF', size=11)
-            lc.fill = fill(label_bg)
-            lc.border = thin
-            lc.alignment = Alignment(horizontal='right', vertical='center')
-            vc = ws.cell(row=row, column=2, value=value)
-            vc.font = Font(name='Aptos', size=11)
-            vc.border = thin
-            vc.alignment = Alignment(vertical='center')
-
-        def section(ws, row, title, bg='333333'):
-            lc = ws.cell(row=row, column=1, value=title)
-            lc.font = Font(name='Aptos', bold=True, color='FFFFFF', size=12)
-            lc.fill = fill(bg)
-            lc.border = thin
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
-
-        row = 1
-        ws4.column_dimensions['A'].width = 36
-        ws4.column_dimensions['B'].width = 28
-        ws4.column_dimensions['C'].width = 52
-
-        section(ws4, row, "📐 Flent Lens — Arbitrage Structural OLS Results", 'FF6600')
-        row += 1
-
-        if ols_model is not None:
-            beta      = float(ols_model.params.get('rent_1bhk', ols_model.params.iloc[1]))
-            intercept = float(ols_model.params.iloc[0])
-            r2        = float(ols_model.rsquared)
-            nobs      = int(ols_model.nobs)
-            pval      = float(ols_model.pvalues.iloc[1])
-            breakeven = beta / 3.0
-            ddf       = getattr(config, 'DEMAND_DISCOUNT_FACTOR', 0.80)
-            proven    = ddf >= breakeven
-
-            section(ws4, row, "Model Parameters", '1F4E79'); row += 1
-            label_val(ws4, row, "Model", "OLS(Q25 3BHK Acq Cost ~ Median 1BHK Retail Rent)"); row += 1
-            label_val(ws4, row, "Observations (Wards)", nobs); row += 1
-            label_val(ws4, row, "R² (Fit Quality)", f"{r2:.4f}"); row += 1
-            label_val(ws4, row, "Intercept (α)", f"₹{intercept:,.0f}"); row += 1
-            label_val(ws4, row, "1BHK Cost Multiplier (β)", f"{beta:.3f}x"); row += 1
-            label_val(ws4, row, "p-value (β)", f"{pval:.4f} {'✓ Significant' if pval < 0.05 else '✗ Not Significant at 5%'}"); row += 1
-
-            row += 1
-            section(ws4, row, "Arbitrage Proof", '1a7a34'); row += 1
-            label_val(ws4, row, "Breakeven Demand Discount Min", f"{breakeven:.3f}  ({breakeven*100:.1f}%)"); row += 1
-            label_val(ws4, row, "Flent's Operational DDF", f"{ddf:.2f}  ({ddf*100:.0f}%)"); row += 1
-            label_val(ws4, row, "Arbitrage Thesis", "✅ STRUCTURALLY PROVEN" if proven else "⚠️ REVIEW REQUIRED"); row += 1
-
-            row += 1
-            section(ws4, row, "Plain-English Interpretation", '333333'); row += 1
-
-            explanations = [
-                ("What is β = {:.2f}?".format(beta),
-                 "For every ₹1,000 increase in 1BHK market rent, the 3BHK acquisition cost "
-                 "only rises by ₹{:,.0f}. Large assets are less price-elastic than rooms.".format(beta * 1000)),
-                ("What is R² = {:.4f}?".format(r2),
-                 "Only {:.1f}% of 3BHK price variation is explained by 1BHK pricing. "
-                 "This is a feature, not a flaw — it confirms market fragmentation and "
-                 "pricing inefficiency that Flent's model exploits.".format(r2 * 100)),
-                ("Breakeven Discount = {:.1f}%".format(breakeven * 100),
-                 "Flent needs to charge rooms at a minimum of {:.1f}% of a standalone 1BHK "
-                 "rent to break even on the 3BHK master lease, assuming 3 rooms.".format(breakeven * 100)),
-                ("Operational DDF = {:.0f}%".format(ddf * 100),
-                 "Flent charges {:.0f}% of 1BHK rent per room — {:.1f} percentage points above "
-                 "breakeven, proving positive structural arbitrage in this dataset.".format(
-                     ddf * 100, (ddf - breakeven) * 100)),
-            ]
-
-            for label, explanation in explanations:
-                lc = ws4.cell(row=row, column=1, value=label)
-                lc.font = Font(name='Aptos', bold=True, size=10)
-                lc.border = thin
-                lc.alignment = Alignment(vertical='top', wrap_text=True)
-                ec = ws4.cell(row=row, column=2, value=explanation)
-                ec.font = Font(name='Aptos', size=10)
-                ec.border = thin
-                ec.alignment = Alignment(vertical='top', wrap_text=True, horizontal='left')
-                ws4.merge_cells(start_row=row, start_column=2, end_row=row, end_column=3)
-                ws4.row_dimensions[row].height = 52
-                row += 1
-        else:
-            ws4.cell(row=row, column=1, value="OLS model not available — re-run pipeline.")
-            row += 2
-
-        # ── Moran's I Spatial Autocorrelation ──
-        section(ws4, row, "🛰️ Moran's I Spatial Autocorrelation", '2e86de')
-        row += 1
-        if morans_result:
-            mi = morans_result.get('moran_i', 0)
-            pv = morans_result.get('p_value', 1.0)
-            cl = "YES (Clustered)" if morans_result.get('clustered') else "NO (Random)"
+def export_cross_city(summaries):
+    """Generate cross-city comparison outputs with Expansion Ranking & Master KML."""
+    with log_process("Building cross-city comparators"):
+        if not summaries:
+            print_warning("No city summaries available")
+            return
             
-            label_val(ws4, row, "Moran's I Index", mi, '2e86de'); row += 1
-            label_val(ws4, row, "p-value", pv, '2e86de'); row += 1
-            label_val(ws4, row, "Clustered?", cl, '2e86de'); row += 1
-        else:
-            ws4.cell(row=row, column=1, value="Moran's I result not available.")
-            row += 1
+        output_dir = os.path.join(os.path.dirname(config.OUTPUT_DIR), 'cross_city')
+        os.makedirs(output_dir, exist_ok=True)
 
-        wb.save(path)
-        print_success(f"Excel Report → [highlight]{os.path.basename(path)}[/] (4 sheets)")
-        return path
+        # 1. Excel Expansion Ranker
+        df = pd.DataFrame(summaries)
+        
+        # Calculate Heuristic Score (Tier 1 Volume + Financial Yield Arbitrage Margin)
+        # e.g., 10 Tier1 hexes * 10,000 + 15,000 margin = 115,000 score
+        df['flent_score'] = (df.get('tier1_count', 0) * 10000) + df.get('median_arb_margin', 0)
+        df_sorted = df.sort_values('flent_score', ascending=False).reset_index(drop=True)
+        
+        # Assign Priority Badges
+        ranks = []
+        for i in range(len(df_sorted)):
+            if i == 0: ranks.append("🏆 HQ PRIORITY 1")
+            elif i == 1: ranks.append("🥈 PRIORITY 2")
+            elif i == 2: ranks.append("🥉 PRIORITY 3")
+            else: ranks.append(f"Rank {i+1}")
+        df_sorted.insert(0, 'expansion_rank', ranks)
+        
+        # Save Sorted Database
+        excel_path = os.path.join(output_dir, 'India_Expansion_Master.xlsx')
+        df_sorted.to_excel(excel_path, index=False)
+        print_success(f"Expansion Ranker → India_Expansion_Master.xlsx ({len(df)} cities)")
 
+        # 2. India Master KML Generator (Network Link Architecture)
+        from src.utils.exporter import _kml_doc, _e, _save_kml
+        kml, doc = _kml_doc("Flent Lens 2.0 — India Master Atlas")
+        ET.SubElement(doc, _e('description')).text = f"Master View aggregating {len(df)} localized city grids via NetworkLinks."
+        
+        # We need absolute path or relative path to the city KMLs. Relative is safer for distribution.
+        # This file is in `output/cross_city/`. The local KML is in `output/{city}/...`
+        # So relative path = `../{city}/{city_name}_Investment_Atlas.kml`
+        for _, row in df_sorted.iterrows():
+            city_key = row['city_key']
+            city_title = row['city']
+            
+            nl = ET.SubElement(doc, _e('NetworkLink'))
+            ET.SubElement(nl, _e('name')).text = f"🌐 {city_title} Topology Layer"
+            ET.SubElement(nl, _e('visibility')).text = "1"
+            ET.SubElement(nl, _e('flyToView')).text = "0"
+            link = ET.SubElement(nl, _e('Link'))
+            # Pathing mapping correctly back into root output dir
+            ET.SubElement(link, _e('href')).text = f"../{city_key}/{city_title}_Investment_Atlas.kml"
+            
+        kml_path = os.path.join(output_dir, 'India_Master_Atlas.kml')
+        _save_kml(kml, kml_path)
+        print_success(f"Master Topography Map → India_Master_Atlas.kml")
 
-# ═══════════════════════════════════════════════════════════════════
-# GEOJSON (kept for future dashboard consumption)
-# ═══════════════════════════════════════════════════════════════════
-def export_geojson(df, wards_gdf, filename='ward_analysis.geojson'):
-    with log_process("Exporting GeoJSON (dashboard data)"):
-        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-        path = os.path.join(config.OUTPUT_DIR, filename)
-        gdf = wards_gdf.merge(df, on='ward_id')
-        gdf.to_file(path, driver='GeoJSON')
-        print_success(f"GeoJSON → [highlight]{os.path.basename(path)}[/] ({len(gdf)} features)")
-        return path
-
-
-# ═══════════════════════════════════════════════════════════════════
-# 3BHK SUPPLY PRICE QUARTILE REPORT
-# ═══════════════════════════════════════════════════════════════════
-def export_3bhk_quartile_xlsx(quartile_df, ward_names_df,
-                                filename='3bhk_supply_price_quartiles.xlsx'):
-    """
-    Export 3BHK supply price quartile breakdown to a formatted XLSX.
-    Sheet 1: Quartile Summary (one row per ward)
-    Sheet 2: Visual Reference (bar chart of top 20 wards)
-    """
-    with log_process("Building 3BHK Supply Price Quartile Report"):
-        if quartile_df is None or len(quartile_df) == 0:
-            print_warning("No quartile data — skipping 3BHK quartile export")
-            return None
-
-        try:
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
-            from openpyxl.formatting.rule import ColorScaleRule
-            from openpyxl.utils import get_column_letter
-            from openpyxl.chart import BarChart, Reference
-        except ModuleNotFoundError:
-            import subprocess, sys
-            print_warning("openpyxl not found — auto-installing...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl", "--quiet"])
-            from openpyxl import Workbook
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, numbers
-            from openpyxl.formatting.rule import ColorScaleRule
-            from openpyxl.utils import get_column_letter
-            from openpyxl.chart import BarChart, Reference
-
-        os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-        path = os.path.join(config.OUTPUT_DIR, filename)
-
-        # Merge ward names
-        out = quartile_df.merge(ward_names_df, on='ward_id', how='left')
-        out['ward_name'] = out['ward_name'].fillna(out['ward_id'].astype(str))
-        out = out.sort_values('total_3bhk_count', ascending=False).reset_index(drop=True)
-
-        wb = Workbook()
-
-        # ── Style primitives ──
-        thin_side = Side('thin', color='D5D5D5')
-        thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
-        header_font = Font(name='Aptos', bold=True, color='FFFFFF', size=11)
-        cell_font = Font(name='Aptos', size=10)
-        cell_font_italic = Font(name='Aptos', size=10, italic=True, color='999999')
-        currency_fmt = '"₹"#,##0'
-
-        q1_fill = PatternFill('solid', fgColor='E8F5E9')   # light green  — budget
-        q2_fill = PatternFill('solid', fgColor='FFF8E1')   # light amber  — moderate
-        q3_fill = PatternFill('solid', fgColor='FFF3E0')   # light orange — above avg
-        q4_fill = PatternFill('solid', fgColor='FFEBEE')   # light red    — premium
-
-        # ══════════════════════════════════════════════════════════
-        # SHEET 1 — QUARTILE SUMMARY
-        # ══════════════════════════════════════════════════════════
-        ws1 = wb.active
-        ws1.title = "📊 Quartile Summary"
-        ws1.sheet_properties.tabColor = '1565C0'
-
-        headers = [
-            'Ward Name', 'Total 3BHK',
-            'Q1 Avg (₹)\nBottom 25%', 'Q1 #',
-            'Q2 Avg (₹)\n25–50%', 'Q2 #',
-            'Q3 Avg (₹)\n50–75%', 'Q3 #',
-            'Q4 Avg (₹)\nTop 25%', 'Q4 #',
-            'P25 (₹)', 'Median (₹)', 'P75 (₹)',
-            'Spread (₹)\nQ4−Q1',
-        ]
-        data_cols = [
-            'ward_name', 'total_3bhk_count',
-            'q1_avg_rent', 'q1_count',
-            'q2_avg_rent', 'q2_count',
-            'q3_avg_rent', 'q3_count',
-            'q4_avg_rent', 'q4_count',
-            'p25', 'p50', 'p75',
-            'spread',
-        ]
-
-        # Header row
-        header_fill = PatternFill('solid', fgColor='1565C0')
-        for ci, h in enumerate(headers, 1):
-            c = ws1.cell(row=1, column=ci, value=h)
-            c.font = header_font
-            c.fill = header_fill
-            c.border = thin_border
-            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-        ws1.row_dimensions[1].height = 40
-
-        # Quartile column fill mapping (1-indexed column → fill)
-        quartile_fills = {3: q1_fill, 5: q2_fill, 7: q3_fill, 9: q4_fill}
-        currency_cols = {3, 5, 7, 9, 11, 12, 13, 14}  # columns with ₹ values
-
-        # Data rows
-        for ri, (_, row) in enumerate(out.iterrows(), 2):
-            is_insufficient = row.get('insufficient_data', False)
-
-            for ci, col in enumerate(data_cols, 1):
-                val = row.get(col, '')
-                if isinstance(val, (np.integer,)):   val = int(val)
-                if isinstance(val, (np.floating,)):  val = float(val)
-                if isinstance(val, (np.bool_,)):     val = bool(val)
-
-                # For insufficient data wards, show note in Q1 column
-                if is_insufficient and ci == 3 and (pd.isna(val) or val == 0):
-                    c = ws1.cell(row=ri, column=ci, value="< 4 listings")
-                    c.font = cell_font_italic
-                else:
-                    c = ws1.cell(row=ri, column=ci, value=val if pd.notna(val) else '')
-
-                    if ci in currency_cols and isinstance(val, (int, float)) and pd.notna(val):
-                        c.number_format = currency_fmt
-                    c.font = cell_font
-
-                c.border = thin_border
-                c.alignment = Alignment(vertical='center',
-                                         horizontal='center' if ci >= 2 else 'left')
-
-                # Apply quartile background fills
-                if ci in quartile_fills:
-                    c.fill = quartile_fills[ci]
-
-        # Auto-width
-        for ci in range(1, len(headers) + 1):
-            letter = get_column_letter(ci)
-            mx = max(
-                len(str(ws1.cell(row=r, column=ci).value or ''))
-                for r in range(1, min(25, ws1.max_row) + 1)
-            )
-            ws1.column_dimensions[letter].width = min(max(mx + 3, 12), 22)
-        ws1.column_dimensions['A'].width = 28  # Ward name needs more room
-
-        ws1.freeze_panes = 'B2'
-
-        # Color scale on Spread column (col 14)
-        if ws1.max_row > 1:
-            ws1.conditional_formatting.add(
-                f'N2:N{ws1.max_row}',
-                ColorScaleRule(
-                    start_type='min', start_color='63BE7B',
-                    mid_type='percentile', mid_value=50, mid_color='FFEB84',
-                    end_type='max', end_color='F8696B'))
-
-        total_wards = len(out)
-        print_detail(f"Sheet 1: {total_wards} wards in quartile summary")
-
-        # ══════════════════════════════════════════════════════════
-        # SHEET 2 — VISUAL REFERENCE (Bar Chart)
-        # ══════════════════════════════════════════════════════════
-        ws2 = wb.create_sheet("📈 Visual Reference")
-        ws2.sheet_properties.tabColor = '00B050'
-
-        # Take top 20 wards by listing count for chart readability
-        chart_data = out[out['insufficient_data'] == False].head(20).copy()
-
-        if len(chart_data) > 0:
-            # Write mini data table for chart source
-            chart_headers = ['Ward', 'Q1 Avg (₹)', 'Q2 Avg (₹)', 'Q3 Avg (₹)', 'Q4 Avg (₹)']
-            chart_fill = PatternFill('solid', fgColor='00B050')
-            for ci, h in enumerate(chart_headers, 1):
-                c = ws2.cell(row=1, column=ci, value=h)
-                c.font = header_font
-                c.fill = chart_fill
-                c.border = thin_border
-                c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-
-            for ri, (_, row) in enumerate(chart_data.iterrows(), 2):
-                ws2.cell(row=ri, column=1, value=row['ward_name']).font = cell_font
-                for ci, col in enumerate(['q1_avg_rent', 'q2_avg_rent', 'q3_avg_rent', 'q4_avg_rent'], 2):
-                    val = row.get(col, 0)
-                    if isinstance(val, (np.integer,)):   val = int(val)
-                    if isinstance(val, (np.floating,)):  val = float(val)
-                    c = ws2.cell(row=ri, column=ci, value=val if pd.notna(val) else 0)
-                    c.number_format = currency_fmt
-                    c.font = cell_font
-                    c.border = thin_border
-
-            ws2.column_dimensions['A'].width = 28
-
-            # Create grouped bar chart
-            chart = BarChart()
-            chart.type = "col"
-            chart.grouping = "clustered"
-            chart.title = "3BHK Supply Price — Quartile Averages by Ward (Top 20)"
-            chart.y_axis.title = "Monthly Rent (₹)"
-            chart.x_axis.title = "Ward"
-            chart.style = 10
-            chart.width = 38
-            chart.height = 18
-
-            nrows = len(chart_data) + 1
-            data_ref = Reference(ws2, min_col=2, min_row=1, max_col=5, max_row=nrows)
-            cats_ref = Reference(ws2, min_col=1, min_row=2, max_row=nrows)
-            chart.add_data(data_ref, titles_from_data=True)
-            chart.set_categories(cats_ref)
-
-            # Color the series
-            colors = ['7CB342', 'FFA726', 'EF5350', 'AB47BC']  # green, orange, red, purple
-            for i, color in enumerate(colors):
-                if i < len(chart.series):
-                    chart.series[i].graphicalProperties.solidFill = color
-
-            chart.shape = 4
-            ws2.add_chart(chart, "A" + str(nrows + 3))
-
-            print_detail(f"Sheet 2: bar chart for top {len(chart_data)} wards")
-        else:
-            ws2.cell(row=1, column=1, value="Insufficient data for chart").font = Font(
-                name='Aptos', size=12, italic=True, color='999999')
-
-        wb.save(path)
-        print_success(f"3BHK Quartile Report → [highlight]{os.path.basename(path)}[/] (2 sheets, {total_wards} wards)")
-        return path
+# EOF

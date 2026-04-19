@@ -1,185 +1,285 @@
 """
-Flent Lens — Feature Engineering
-Outlier removal, ward-level aggregation, and derived metric computation.
-Implements the full schema from the BBA Python Project spec.
+Flent Lens 2.0 — Hex-Level Feature Engineering & K-Ring Smoothing
+Aggregates listing-level data to H3 hex-level features,
+applies count-weighted distance-decayed spatial smoothing,
+and computes bootstrap confidence intervals.
 """
-import pandas as pd
+import h3
 import numpy as np
+import pandas as pd
+from scipy.spatial.distance import cdist
 import config
-from src.utils.logger import print_info, print_detail, log_process
+from src.utils.logger import print_info, print_detail, print_warning, log_process
 
-def remove_outliers_by_group(df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Removing statistical outliers (3σ per ward-BHK group)"):
-        original = len(df)
 
-        # Drop listings that didn't map to any ward first
-        unmapped = df['ward_id'].isna().sum()
-        if unmapped > 0:
-            df = df[df['ward_id'].notna()].copy()
-            print_detail(f"Dropped {unmapped:,} listings outside BBMP boundaries")
+def _weighted_median(values, weights):
+    """Compute the weighted median of a 1D array."""
+    if len(values) == 0:
+        return np.nan
+    sorted_idx = np.argsort(values)
+    vals = np.array(values)[sorted_idx]
+    wts = np.array(weights)[sorted_idx]
+    cumw = np.cumsum(wts)
+    cutoff = cumw[-1] * 0.5
+    idx = np.searchsorted(cumw, cutoff)
+    return vals[min(idx, len(vals) - 1)]
 
-        # Use transform() — broadcasts group-level stats back to original index,
-        # preserving ALL columns (safe with GeoDataFrame in pandas 2+)
-        grp = df.groupby(['ward_id', 'bhk_type'])['monthly_rent']
-        group_median = grp.transform('median')
-        group_std    = grp.transform('std').fillna(0)
 
-        # Keep rows within 3σ of their group median (or in single-listing groups)
-        mask = (group_std == 0) | (
-            (df['monthly_rent'] - group_median).abs() <= config.OUTLIER_STD_THRESHOLD * group_std
+def _bootstrap_ci(values, weights, n_iter=500, ci_pct=90):
+    """Compute bootstrap confidence interval for weighted median."""
+    if len(values) < 3:
+        med = _weighted_median(values, weights)
+        return med, med
+    lower_pct = (100 - ci_pct) / 2
+    upper_pct = 100 - lower_pct
+    medians = []
+    probs = np.array(weights) / np.sum(weights)
+    for _ in range(n_iter):
+        idx = np.random.choice(len(values), size=len(values), replace=True, p=probs)
+        boot_med = np.median(np.array(values)[idx])
+        medians.append(boot_med)
+    return np.percentile(medians, lower_pct), np.percentile(medians, upper_pct)
+
+
+def aggregate_hex_features(listings_gdf: pd.DataFrame, hexes_gdf: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute raw hex-level statistics from listing data.
+    This is the pre-smoothing stage — direct counts and medians per hex.
+    """
+    with log_process("Computing raw hex-level features"):
+        lg = listings_gdf.copy()
+
+        # ──────────────────────────────────────────────────────────
+        # 1. Counts by BHK and asset type
+        # ──────────────────────────────────────────────────────────
+        bhk_counts = lg.groupby(['hex_id', 'bhk_type']).size().unstack(fill_value=0)
+        for b in [1, 2, 3, 4]:
+            if b not in bhk_counts.columns:
+                bhk_counts[b] = 0
+        bhk_counts.columns = [f'cnt_{int(c)}bhk' for c in bhk_counts.columns]
+
+        asset_counts = lg.groupby(['hex_id', 'asset_type']).size().unstack(fill_value=0)
+        for at in ['apartment', 'villa']:
+            if at not in asset_counts.columns:
+                asset_counts[at] = 0
+        asset_counts.columns = [f'n_{c}s' for c in asset_counts.columns]
+
+        total_counts = lg.groupby('hex_id').size().rename('total_listings')
+
+        # ──────────────────────────────────────────────────────────
+        # 2. Median rents by BHK
+        # ──────────────────────────────────────────────────────────
+        median_rents = lg.groupby(['hex_id', 'bhk_type'])['monthly_rent'].median().unstack()
+        for b in [1, 2, 3, 4]:
+            if b not in median_rents.columns:
+                median_rents[b] = np.nan
+        median_rents.columns = [f'median_rent_{int(c)}bhk' for c in median_rents.columns]
+
+        # Q1 (25th percentile) of 3BHK and villa rents — this is the acquisition cost
+        q1_3bhk = (lg[(lg['bhk_type'] >= 3) & (lg['asset_type'] == 'apartment')]
+                   .groupby('hex_id')['monthly_rent']
+                   .quantile(0.25).rename('q1_rent_3bhk_apt'))
+
+        q1_villa = (lg[lg['asset_type'] == 'villa']
+                    .groupby('hex_id')['monthly_rent']
+                    .quantile(0.25).rename('q1_rent_villa'))
+
+        # Exact count of acquire-able volume (At or below Q1 cost)
+        apt_eligible = lg[(lg['bhk_type'] >= 3) & (lg['asset_type'] == 'apartment')]
+        n_acq_apt = (apt_eligible.groupby('hex_id')
+                     .apply(lambda g: (g['monthly_rent'] <= g['monthly_rent'].quantile(0.25)).sum())
+                     .rename('n_acq_apt')) if len(apt_eligible) > 0 else pd.Series(dtype=int, name='n_acq_apt')
+                     
+        vil_eligible = lg[lg['asset_type'] == 'villa']
+        n_acq_villa = (vil_eligible.groupby('hex_id')
+                       .apply(lambda g: (g['monthly_rent'] <= g['monthly_rent'].quantile(0.25)).sum())
+                       .rename('n_acq_villa')) if len(vil_eligible) > 0 else pd.Series(dtype=int, name='n_acq_villa')
+
+        # ──────────────────────────────────────────────────────────
+        # 3. Sqft stats
+        # ──────────────────────────────────────────────────────────
+        sqft_stats = lg[lg['sqft'] > 0].groupby('hex_id')['sqft'].agg(
+            median_sqft='median', mean_sqft='mean'
         )
-        df = df[mask].copy()
 
-        removed = original - len(df)
-        print_detail(f"{removed:,} rows removed (outliers + unmapped) from {original:,} listings")
-        return df
-
-
-
-def aggregate_ward_features(df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Computing ward-level statistical aggregates"):
-        # ── Listing Counts by BHK Type ──
-        counts = df.groupby(['ward_id', 'bhk_type']).size().unstack(fill_value=0)
-        counts.columns = [f'cnt_{int(c)}bhk' for c in counts.columns]
-        for bhk in [1, 2, 3, 4]:
-            if f'cnt_{bhk}bhk' not in counts.columns:
-                counts[f'cnt_{bhk}bhk'] = 0
-
-        # ── Rental & Size Statistics by BHK ──
-        grp = df.groupby(['ward_id', 'bhk_type'])
-        
-        rent_median = grp['monthly_rent'].median()
-        rent_q25    = grp['monthly_rent'].quantile(0.25)
-        sqft_median = grp['sqft'].median()
-
-        stats = pd.DataFrame({
-            'rent_median_raw': rent_median,
-            'rent_q25': rent_q25,
-            'sqft_median': sqft_median
-        }).reset_index()
-
-        # Flent Acquisition Strategy: 1BHK/2BHK use Medians (Retail). 3BHK/4BHK use 25th Percentile (Distressed/Base Acquisition)
-        target_bhks = [3, 4, 3.0, 4.0, '3', '4', '3.0', '4.0']
-        stats['rent_stat'] = np.where(stats['bhk_type'].isin(target_bhks), stats['rent_q25'], stats['rent_median_raw'])
-        stats = stats[['ward_id', 'bhk_type', 'rent_stat', 'sqft_median']]
-        stats.columns = ['ward_id', 'bhk_type', 'rent_median', 'sqft_median']
-
-        pivoted = stats.pivot(index='ward_id', columns='bhk_type')
-        pivoted.columns = [f'{col[0]}_{int(col[1])}bhk' for col in pivoted.columns]
-        pivoted = pivoted.reset_index().fillna(0)
-
-        # ── Merge Counts with Medians ──
-        ward_df = pivoted.merge(counts.reset_index(), on='ward_id', how='outer').fillna(0)
-
-        # ── Rename for Internal Consistency ──
-        rename_map = {
-            'rent_median_1bhk': 'avg_rent_1bhk', 'rent_median_2bhk': 'avg_rent_2bhk',
-            'rent_median_3bhk': 'avg_rent_3bhk', 'rent_median_4bhk': 'avg_rent_4bhk',
-            'sqft_median_1bhk': 'avg_sqft_1bhk', 'sqft_median_2bhk': 'avg_sqft_2bhk',
-            'sqft_median_3bhk': 'avg_sqft_3bhk', 'sqft_median_4bhk': 'avg_sqft_4bhk',
-        }
-        ward_df = ward_df.rename(columns={k: v for k, v in rename_map.items() if k in ward_df.columns})
-        for col in rename_map.values():
-            if col not in ward_df.columns:
-                ward_df[col] = 0.0
-        for bhk in [1, 2, 3, 4]:
-            if f'cnt_{bhk}bhk' not in ward_df.columns:
-                ward_df[f'cnt_{bhk}bhk'] = 0
-
-        # Backward-compatible aliases
-        ward_df['listing_count_1bhk'] = ward_df['cnt_1bhk']
-        ward_df['listing_count_3bhk'] = ward_df['cnt_3bhk']
-
-        # ── Percentage of XL 3BHKs (≥ config.YIELD_3BHK_XL_SQFT) ──
-        bhk3 = df[df['bhk_type'] == 3]
-        if len(bhk3) > 0:
-            pct_xl = bhk3.groupby('ward_id').apply(
-                lambda g: (g['sqft'].fillna(0) >= config.YIELD_3BHK_XL_SQFT).mean()
-            ).reset_index(name='pct_3bhk_xl')
-            ward_df = ward_df.merge(pct_xl, on='ward_id', how='left')
-            ward_df['pct_3bhk_xl'] = ward_df['pct_3bhk_xl'].fillna(0)
+        # Percentage of 3BHK+ apartments over size threshold
+        apt_3bhk = lg[(lg['bhk_type'] >= 3) & (lg['asset_type'] == 'apartment')]
+        if len(apt_3bhk) > 0:
+            pct_large = apt_3bhk.groupby('hex_id').apply(
+                lambda g: (g['sqft'] >= config.MIN_SQFT_APARTMENT).mean()
+            ).rename('pct_3bhk_large')
         else:
-            ward_df['pct_3bhk_xl'] = 0.0
+            pct_large = pd.Series(dtype=float, name='pct_3bhk_large')
 
-        bhk_types = len(df['bhk_type'].unique())
-        print_detail(f"Aggregated {len(ward_df)} wards across {bhk_types} BHK types")
-        return ward_df
+        pct_xl = apt_3bhk.groupby('hex_id').apply(
+            lambda g: (g['sqft'] >= config.YIELD_APT_XL_SQFT).mean()
+        ).rename('pct_3bhk_xl') if len(apt_3bhk) > 0 else pd.Series(dtype=float, name='pct_3bhk_xl')
+
+        # ──────────────────────────────────────────────────────────
+        # 4. Price per sqft spread
+        # ──────────────────────────────────────────────────────────
+        psf = lg[lg['price_per_sqft'].notna() & (lg['price_per_sqft'] > 0)]
+        psf_1bhk = psf[psf['bhk_type'] == 1].groupby('hex_id')['price_per_sqft'].median().rename('rps_1bhk')
+        psf_3bhk = psf[psf['bhk_type'] >= 3].groupby('hex_id')['price_per_sqft'].median().rename('rps_3bhk')
+
+        # ──────────────────────────────────────────────────────────
+        # 5. Merge all into hex_df
+        # ──────────────────────────────────────────────────────────
+        hex_df = hexes_gdf[['hex_id', 'centroid_lat', 'centroid_lon', 'area_sqkm']].copy()
+        hex_df = hex_df.set_index('hex_id')
+
+        for series in [total_counts, bhk_counts, asset_counts, median_rents,
+                       q1_3bhk, q1_villa, n_acq_apt, n_acq_villa, sqft_stats, pct_large, pct_xl,
+                       psf_1bhk, psf_3bhk]:
+            hex_df = hex_df.join(series, how='left')
+
+        hex_df = hex_df.fillna({'total_listings': 0, 'cnt_1bhk': 0, 'cnt_2bhk': 0,
+                                'cnt_3bhk': 0, 'cnt_4bhk': 0, 'n_apartments': 0, 'n_villas': 0,
+                                'n_acq_apt': 0, 'n_acq_villa': 0})
+        hex_df = hex_df.reset_index()
+        hex_df['sample_size'] = hex_df['total_listings'].astype(int)
+
+        print_detail(f"Computed raw features for {len(hex_df)} hexes")
+        print_detail(f"Hexes with ≥1 listing: {(hex_df['sample_size'] > 0).sum()}")
+        return hex_df
 
 
-def compute_derived_columns(ward_df: pd.DataFrame) -> pd.DataFrame:
-    with log_process("Computing derived metrics (SFC, unit economics, sparsity flags)"):
-        # ── Data Sparsity Flag ──
-        # Flag sparse if it lacks 3BHK raw acquisition supply. 
-        # (We relax the 1BHK check because tech parks often naturally lack standalone 1BHKs)
-        ward_df['data_sparse'] = (ward_df['cnt_3bhk'] < config.MIN_LISTINGS_PER_BHK)
-
-        # ── Rent Per Sqft ──
-        ward_df['rps_1bhk'] = (ward_df['avg_rent_1bhk'] / ward_df['avg_sqft_1bhk']).replace([np.inf, -np.inf], 0).fillna(0)
-        ward_df['rps_3bhk'] = (ward_df['avg_rent_3bhk'] / ward_df['avg_sqft_3bhk']).replace([np.inf, -np.inf], 0).fillna(0)
-
-        # ── Small Flat Concentration (SFC) — per spec ──
-        total = ward_df['cnt_1bhk'] + ward_df['cnt_2bhk'] + ward_df['cnt_3bhk'] + ward_df['cnt_4bhk']
-        small = ward_df['cnt_1bhk'] + ward_df['cnt_2bhk']
-        ward_df['sfc'] = (small / total).replace([np.inf, -np.inf], 0).fillna(0)
-
-        sparse_count = ward_df['data_sparse'].sum()
-        print_detail(f"{sparse_count} wards flagged data-sparse (< {config.MIN_LISTINGS_PER_BHK} listings for 3BHK supply)")
-        return ward_df
-
-
-def compute_3bhk_quartile_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+def apply_kring_smoothing(hex_df: pd.DataFrame, listings_gdf: pd.DataFrame) -> pd.DataFrame:
     """
-    Compute average 3BHK rent within each quartile bin per ward.
-    Q1 = bottom 25%, Q2 = 25–50%, Q3 = 50–75%, Q4 = top 25%.
-    Input: listing-level GeoDataFrame (post-outlier removal, with ward_id).
+    Apply count-weighted, distance-decayed K-Ring smoothing for 1BHK median rent.
+    Computes Neff and bootstrap confidence intervals.
+
+    Weight function:  w_i = count_i / (1 + β × dist_i)
+    Neff = (Σw)² / Σ(w²)
     """
-    with log_process("Computing 3BHK supply price quartile breakdown per ward"):
-        bhk3 = df[df['bhk_type'] == 3].copy()
-        if len(bhk3) == 0:
-            print_detail("No 3BHK listings found — quartile report will be empty")
-            return pd.DataFrame()
+    with log_process("Applying K-Ring weighted spatial smoothing"):
+        beta = config.KRING_DECAY_BETA
+        k = config.KRING_RADIUS
+        bhk1 = listings_gdf[listings_gdf['bhk_type'] == 1].copy()
 
-        print_detail(f"Analysing {len(bhk3):,} 3BHK listings across {bhk3['ward_id'].nunique()} wards")
+        # Pre-compute centroid lookup
+        centroid_lookup = hex_df.set_index('hex_id')[['centroid_lat', 'centroid_lon']].to_dict('index')
 
-        def _ward_quartiles(g):
-            rents = g['monthly_rent'].dropna().sort_values()
-            n = len(rents)
-            if n == 0:
-                return pd.Series(dtype=float)
+        smoothed_records = []
 
-            p25 = rents.quantile(0.25)
-            p50 = rents.quantile(0.50)
-            p75 = rents.quantile(0.75)
+        for _, row in hex_df.iterrows():
+            hex_id = row['hex_id']
+            own_count = int(row.get('cnt_1bhk', 0))
 
-            q1 = rents[rents <= p25]
-            q2 = rents[(rents > p25) & (rents <= p50)]
-            q3 = rents[(rents > p50) & (rents <= p75)]
-            q4 = rents[rents > p75]
+            # Own hex listings
+            own_rents = bhk1[bhk1['hex_id'] == hex_id]['monthly_rent'].values
+            own_center = (row['centroid_lat'], row['centroid_lon'])
 
-            q1_avg = q1.mean() if len(q1) > 0 else np.nan
-            q2_avg = q2.mean() if len(q2) > 0 else np.nan
-            q3_avg = q3.mean() if len(q3) > 0 else np.nan
-            q4_avg = q4.mean() if len(q4) > 0 else np.nan
+            # Collect weighted rents from neighbors
+            all_rents = list(own_rents)
+            all_weights = [1.0] * len(own_rents)  # Own hex weight = 1.0 per listing
 
-            spread = (q4_avg - q1_avg) if (pd.notna(q4_avg) and pd.notna(q1_avg)) else np.nan
+            neighbors = set(h3.grid_disk(hex_id, k))
+            neighbors.discard(hex_id)
 
-            return pd.Series({
-                'total_3bhk_count': n,
-                'p25': p25, 'p50': p50, 'p75': p75,
-                'q1_count': len(q1), 'q1_avg_rent': q1_avg,
-                'q2_count': len(q2), 'q2_avg_rent': q2_avg,
-                'q3_count': len(q3), 'q3_avg_rent': q3_avg,
-                'q4_count': len(q4), 'q4_avg_rent': q4_avg,
-                'spread': spread,
+            for nb in neighbors:
+                nb_rents = bhk1[bhk1['hex_id'] == nb]['monthly_rent'].values
+                if len(nb_rents) == 0:
+                    continue
+
+                # Distance between centroids (in km, approximate)
+                if nb in centroid_lookup:
+                    nb_center = (centroid_lookup[nb]['centroid_lat'],
+                                centroid_lookup[nb]['centroid_lon'])
+                    dist_km = _haversine(own_center, nb_center)
+                else:
+                    dist_km = 2.5  # default for unknown neighbors
+
+                # Weight per neighbor listing
+                w = 1.0 / (1.0 + beta * dist_km)
+                all_rents.extend(nb_rents)
+                all_weights.extend([w] * len(nb_rents))
+
+            # Compute smoothed metrics
+            if len(all_rents) > 0:
+                rents_arr = np.array(all_rents)
+                weights_arr = np.array(all_weights)
+
+                smoothed_median = _weighted_median(rents_arr, weights_arr)
+
+                # Neff
+                w_sum = weights_arr.sum()
+                w_sq_sum = (weights_arr ** 2).sum()
+                neff = (w_sum ** 2) / w_sq_sum if w_sq_sum > 0 else 0
+
+                # Bootstrap CI
+                ci_low, ci_high = _bootstrap_ci(
+                    rents_arr, weights_arr,
+                    n_iter=config.BOOTSTRAP_ITERATIONS,
+                    ci_pct=config.BOOTSTRAP_CI_PCT
+                )
+
+                pct_neighbor = 1 - (len(own_rents) / len(all_rents)) if len(all_rents) > 0 else 0
+            else:
+                smoothed_median = np.nan
+                neff = 0
+                ci_low = ci_high = np.nan
+                pct_neighbor = 0
+
+            smoothed_records.append({
+                'hex_id': hex_id,
+                'smoothed_median_1bhk': smoothed_median,
+                'Neff': round(neff, 2),
+                'rent_1bhk_CI_low': ci_low,
+                'rent_1bhk_CI_high': ci_high,
+                'pct_neighbor_sourced': round(pct_neighbor, 3),
             })
 
-        result = bhk3.groupby('ward_id').apply(_ward_quartiles).reset_index()
+        smooth_df = pd.DataFrame(smoothed_records)
+        hex_df = hex_df.merge(smooth_df, on='hex_id', how='left')
 
-        # Flag wards with insufficient data for meaningful quartiles
-        result['insufficient_data'] = result['total_3bhk_count'] < 4
+        # Confidence classification
+        hex_df['confidence'] = 'data_insufficient'
+        hex_df.loc[hex_df['Neff'] >= config.NEFF_LOW_CONFIDENCE, 'confidence'] = 'low_confidence'
+        hex_df.loc[hex_df['Neff'] >= config.NEFF_FULL_CONFIDENCE, 'confidence'] = 'full'
 
-        sufficient = (result['insufficient_data'] == False).sum()
-        print_detail(f"{sufficient} wards have ≥4 listings (meaningful quartiles)")
-        print_detail(f"{result['insufficient_data'].sum()} wards have <4 listings (flagged)")
+        # Use smoothed median as the primary 1BHK rent (overrides raw)
+        hex_df['avg_rent_1bhk'] = hex_df['smoothed_median_1bhk']
 
-        return result
+        # Stats
+        conf_counts = hex_df['confidence'].value_counts()
+        print_detail(f"Confidence: Full={conf_counts.get('full', 0)} | "
+                     f"Low={conf_counts.get('low_confidence', 0)} | "
+                     f"Insufficient={conf_counts.get('data_insufficient', 0)}")
+        print_detail(f"Median Neff: {hex_df['Neff'].median():.1f}")
+
+        return hex_df
+
+
+def compute_demand_features(hex_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute DII sub-components at hex level."""
+    with log_process("Computing demand intensity features"):
+        city_median_1bhk = hex_df['avg_rent_1bhk'].median()
+        if city_median_1bhk == 0 or pd.isna(city_median_1bhk):
+            city_median_1bhk = 1  # prevent division by zero
+
+        hex_df['city_median_1bhk'] = city_median_1bhk
+        hex_df['price_pressure'] = hex_df['avg_rent_1bhk'] / city_median_1bhk
+
+        # Small Flat Concentration
+        hex_df['sfc'] = np.where(
+            hex_df['total_listings'] > 0,
+            (hex_df['cnt_1bhk'] + hex_df['cnt_2bhk']) / hex_df['total_listings'],
+            0
+        )
+
+        # PSF spread
+        hex_df['psf_diff'] = (hex_df['rps_1bhk'].fillna(0) - hex_df['rps_3bhk'].fillna(0)).abs()
+
+        print_detail(f"City median 1BHK rent: ₹{city_median_1bhk:,.0f}")
+        return hex_df
+
+
+def _haversine(coord1, coord2):
+    """Haversine distance in km between (lat, lon) tuples."""
+    lat1, lon1 = np.radians(coord1)
+    lat2, lon2 = np.radians(coord2)
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    return 6371 * 2 * np.arcsin(np.sqrt(a))

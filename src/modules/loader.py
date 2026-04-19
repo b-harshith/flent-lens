@@ -1,278 +1,190 @@
+"""
+Flent Lens 2.0 — Data Ingestion
+Loads from the compiled multi-city CSV, filters by city,
+validates schema, and produces a GeoDataFrame ready for H3 assignment.
+"""
+import os
 import pandas as pd
 import geopandas as gpd
+import numpy as np
 import config
-import fiona
-import os
-import re
-import xml.etree.ElementTree as ET
-from src.utils.logger import console, print_success, print_error, print_info, print_warning, print_detail, log_process
+from city_config import COMPILED_LISTINGS_CSV
+from src.utils.logger import (
+    print_info, print_detail, print_warning, print_success, log_process
+)
 
-def load_listings(path: str = None) -> gpd.GeoDataFrame:
-    path = path or config.LISTINGS_CSV
-    with log_process("Loading Listings"):
-        try:
-            df = pd.read_csv(path, dtype={'listing_id': str})
-        except FileNotFoundError:
-            print_error(f"Listings file not found at {path}")
-            return gpd.GeoDataFrame(columns=['listing_id', 'latitude', 'longitude', 'bhk_type', 'monthly_rent', 'listing_type', 'sqft', 'geometry'], crs=config.CRS_GEOGRAPHIC)
 
-        # Handle missing listing_type column (Hyderabad CSV omits it)
-        if 'listing_type' not in df.columns:
-            df['listing_type'] = 'rent'
+def classify_asset(row):
+    """
+    Rule-based property typology classifier.
+    Returns 'villa' or 'apartment' based on physical characteristics.
+    """
+    pt = str(row.get('property_type', '')).lower().strip()
+    sqft = row.get('sqft', 0) or 0
+    floors = row.get('total_floors', 99) or 99
 
-        REQUIRED = ['listing_id', 'latitude', 'longitude', 'bhk_type', 'monthly_rent', 'listing_type', 'sqft']
-        missing = [c for c in REQUIRED if c not in df.columns]
-        if missing:
-            raise ValueError(f'Missing required columns: {missing}')
+    # Explicit villa/house keywords + physical validation
+    if any(kw in pt for kw in ['independent house', 'villa', 'residential house',
+                                 'farm house', 'bungalow']):
+        if sqft >= config.VILLA_MIN_SQFT and floors <= config.VILLA_MAX_FLOORS:
+            return 'villa'
+        elif sqft >= config.VILLA_MIN_SQFT:
+            return 'villa'
 
-        df = df[df['listing_type'] == 'rent'].copy()
-        df = df.dropna(subset=['latitude', 'longitude', 'monthly_rent', 'bhk_type'])
-        
-        df['monthly_rent'] = pd.to_numeric(df['monthly_rent'], errors='coerce')
-        df['sqft']         = pd.to_numeric(df['sqft'],         errors='coerce')
-        df['bhk_type']     = df['bhk_type'].astype(int)
+    # Builder floors are functionally apartments
+    if 'independent floor' in pt or 'builder floor' in pt:
+        return 'apartment'
 
-        df = df[(df['monthly_rent'] >= 5_000) & (df['monthly_rent'] <= 5_00_000)]
-        df = df[(df['bhk_type'] >= 1) & (df['bhk_type'] <= 6)]
+    return 'apartment'
 
-        # Filter out zero/invalid coordinates BEFORE geo-fence
-        zero_coords = (df['latitude'].abs() < 1) | (df['longitude'].abs() < 1)
-        if zero_coords.sum() > 0:
-            print_detail(f"Dropped {zero_coords.sum()} listings with zero/invalid coordinates")
-            df = df[~zero_coords]
 
-        # City-specific bounding box from config
-        lat_min, lat_max = config.BOUNDING_BOX['lat']
-        lon_min, lon_max = config.BOUNDING_BOX['lon']
-        before = len(df)
-        df = df[(df['latitude'].between(lat_min, lat_max)) & (df['longitude'].between(lon_min, lon_max))]
-        dropped = before - len(df)
-        if dropped > 0:
-            print_detail(f"Geo-fence ({config.CITY_NAME}): dropped {dropped:,} listings outside [{lat_min}–{lat_max}] lat, [{lon_min}–{lon_max}] lon")
-                
-        if 'days_on_market' not in df.columns:
-            df['days_on_market'] = pd.NA
+def extract_bhk(row):
+    """
+    Extract numeric BHK. Priority:
+      1. bhk_type column (if populated)
+      2. listing_url pattern (e.g. '3-BHK-1200-Sq-ft')
+    """
+    import re
+    # Try column value first
+    val = row.get('bhk_type')
+    if pd.notna(val):
+        s = str(val).strip()
+        for char in s:
+            if char.isdigit():
+                return int(char)
 
-        gdf = gpd.GeoDataFrame(
-            df, geometry=gpd.points_from_xy(df['longitude'], df['latitude']),
+    # Fallback: parse from URL
+    url = row.get('listing_url', '')
+    if pd.notna(url):
+        m = re.search(r'(\d+)-BHK', str(url), re.IGNORECASE)
+        if m:
+            return int(m.group(1))
+
+    return None
+
+
+def load_listings(city_key: str = None) -> gpd.GeoDataFrame:
+    """
+    Load listings from the compiled CSV for a specific city.
+    Returns a cleaned GeoDataFrame with validated coordinates, rent, sqft, BHK, and asset_type.
+    """
+    target_city = config.CITY_NAME if city_key is None else config.CITY['city_name']
+
+    with log_process(f"Loading listings for {target_city}"):
+        # 1. Read and filter by city
+        if not os.path.exists(COMPILED_LISTINGS_CSV):
+            raise FileNotFoundError(
+                f"Compiled listings CSV not found at: {COMPILED_LISTINGS_CSV}\n"
+                f"Run the scraper/parser first, or place compiled_listings.csv in data/raw/"
+            )
+
+        df = pd.read_csv(COMPILED_LISTINGS_CSV, low_memory=False)
+        print_detail(f"Master CSV: {len(df):,} total rows across {df['search_city'].nunique()} cities")
+
+        city_df = df[df['search_city'].str.lower() == target_city.lower()].copy()
+        print_detail(f"Filtered to {target_city}: {len(city_df):,} rows")
+
+        if len(city_df) == 0:
+            raise ValueError(f"No listings found for city '{target_city}' in compiled CSV. "
+                           f"Available cities: {df['search_city'].unique().tolist()}")
+
+        # 2. Validate coordinates
+        city_df['latitude'] = pd.to_numeric(city_df['latitude'], errors='coerce')
+        city_df['longitude'] = pd.to_numeric(city_df['longitude'], errors='coerce')
+        before = len(city_df)
+        # Drop missing, zero, or clearly invalid coords
+        city_df = city_df.dropna(subset=['latitude', 'longitude'])
+        city_df = city_df[(city_df['latitude'] > 1) & (city_df['longitude'] > 1)]
+
+        bb = config.BOUNDING_BOX
+        city_df = city_df[
+            (city_df['latitude'].between(bb['lat'][0], bb['lat'][1])) &
+            (city_df['longitude'].between(bb['lon'][0], bb['lon'][1]))
+        ]
+        dropped_geo = before - len(city_df)
+        if dropped_geo > 0:
+            print_warning(f"Dropped {dropped_geo} listings (missing/out-of-bounds coordinates)")
+
+        # 3. Clean and validate rent
+        city_df['monthly_rent'] = pd.to_numeric(city_df['monthly_rent'], errors='coerce')
+        city_df = city_df.dropna(subset=['monthly_rent'])
+        city_df = city_df[
+            (city_df['monthly_rent'] >= config.MIN_RENT) &
+            (city_df['monthly_rent'] <= config.MAX_RENT)
+        ]
+
+        # 4. Clean sqft
+        city_df['sqft'] = pd.to_numeric(city_df['sqft'], errors='coerce').fillna(0)
+
+        # 5. Extract BHK (from column or URL fallback)
+        city_df['bhk_type'] = city_df.apply(extract_bhk, axis=1)
+        before_bhk = len(city_df)
+        city_df = city_df.dropna(subset=['bhk_type'])
+        city_df['bhk_type'] = city_df['bhk_type'].astype(int)
+        print_detail(f"BHK extracted: {len(city_df)} valid ({before_bhk - len(city_df)} missing)")
+
+        # 6. Clean total_floors for villa classification
+        city_df['total_floors'] = pd.to_numeric(city_df['total_floors'], errors='coerce').fillna(99)
+
+        # 7. Classify asset type (apartment vs villa)
+        city_df['asset_type'] = city_df.apply(classify_asset, axis=1)
+
+        # 8. Compute per-sqft rent
+        city_df['price_per_sqft'] = np.where(
+            city_df['sqft'] > 0,
+            city_df['monthly_rent'] / city_df['sqft'],
+            np.nan
+        )
+
+        # 9. Convert to GeoDataFrame
+        listings_gdf = gpd.GeoDataFrame(
+            city_df,
+            geometry=gpd.points_from_xy(city_df['longitude'], city_df['latitude']),
             crs=config.CRS_GEOGRAPHIC
         )
-        print_info(f"Loaded [highlight]{len(gdf)}[/highlight] valid listings for [highlight]{config.CITY_NAME}[/highlight].")
-        return gdf
 
-def load_kml(path: str, layer: int = 0) -> gpd.GeoDataFrame:
-    fiona.drvsupport.supported_drivers['KML'] = 'rw'
-    try:
-        layers = fiona.listlayers(path)
-        gdf = gpd.read_file(path, driver='KML', layer=layers[layer])
+        # 10. Summary stats
+        bhk_dist = listings_gdf['bhk_type'].value_counts().sort_index()
+        asset_dist = listings_gdf['asset_type'].value_counts()
+        median_rent = listings_gdf['monthly_rent'].median()
+
+        print_info(f"Loaded [highlight]{len(listings_gdf):,}[/highlight] valid listings")
+        print_detail(f"BHK distribution: {dict(bhk_dist)}")
+        print_detail(f"Asset types: {dict(asset_dist)}")
+        print_detail(f"Median monthly rent: ₹{median_rent:,.0f}")
+
+        return listings_gdf
+
+
+def load_admin_boundaries() -> gpd.GeoDataFrame:
+    """
+    Load administrative boundary KML (wards/pincodes) if available.
+    Used for reverse geocoding overlay and zoning context, NOT for primary zoning.
+    Returns None if no KML is configured.
+    """
+    if not config.HAS_ADMIN_KML:
+        return None
+
+    kml_path = config.ADMIN_KML
+    if not kml_path or not os.path.exists(kml_path):
+        print_warning(f"Admin KML configured but not found at: {kml_path}")
+        return None
+
+    with log_process(f"Loading admin boundaries from {os.path.basename(kml_path)}"):
+        import fiona
+        fiona.drvsupport.supported_drivers['KML'] = 'rw'
+        layers = fiona.listlayers(kml_path)
+
+        if not layers:
+            print_warning("No layers found in admin KML")
+            return None
+
+        gdf = gpd.read_file(kml_path, driver='KML', layer=layers[0])
         gdf = gdf.to_crs(config.CRS_GEOGRAPHIC)
+
+        # Standardize column names
+        if 'Name' in gdf.columns and 'admin_name' not in gdf.columns:
+            gdf = gdf.rename(columns={'Name': 'admin_name'})
+
+        print_detail(f"Loaded {len(gdf)} admin zones from '{layers[0]}'")
         return gdf
-    except Exception as e:
-        print_error(f"Could not load KML at {path}. Error: {e}")
-        return gpd.GeoDataFrame(columns=['geometry'], crs=config.CRS_GEOGRAPHIC)
-
-def _parse_kml_attributes(path: str) -> pd.DataFrame:
-    """
-    Parse attributes from KML ExtendedData/SchemaData/SimpleData,
-    which fiona silently drops. Returns a DataFrame indexed by row order.
-    Works for both ward KMLs and pincode KMLs.
-    """
-    ns_map = [
-        'http://www.opengis.net/kml/2.2',
-        'http://earth.google.com/kml/2.2',
-        'http://earth.google.com/kml/2.1',
-        '',
-    ]
-    tree = ET.parse(path)
-    root = tree.getroot()
-
-    records = []
-    for ns in ns_map:
-        prefix = f'{{{ns}}}' if ns else ''
-        placemarks = root.findall(f'.//{prefix}Placemark')
-        if not placemarks:
-            continue
-        for pm in placemarks:
-            rec = {}
-            # Grab the <name> element as well (pincode KMLs use it)
-            name_el = pm.find(f'{prefix}name')
-            if name_el is not None and name_el.text:
-                rec['_kml_name'] = name_el.text.strip()
-            # Try both namespaced and bare SimpleData
-            for parent in [pm.find(f'.//{prefix}SchemaData'),
-                           pm.find('.//SchemaData'),
-                           pm.find(f'.//{prefix}ExtendedData'),
-                           pm.find('.//ExtendedData')]:
-                if parent is None:
-                    continue
-                for sd in parent.iter():
-                    tag = sd.tag.split('}')[-1]
-                    if tag in ('SimpleData', 'Data'):
-                        name = sd.get('name', '')
-                        val = (sd.text or '').strip()
-                        if name and name not in rec:
-                            rec[name] = val
-            records.append(rec)
-        if records:
-            break
-
-    return pd.DataFrame(records)
-
-def load_geo_zones(path: str = None) -> gpd.GeoDataFrame:
-    path = path or config.GEO_KML
-    geo_label = config.GEO_UNIT_LABEL
-
-    with log_process(f"Loading {geo_label}s (parsing SchemaData attributes)"):
-        # Get geometries via geopandas (raw, inclusive of empty/invalid)
-        gdf = load_kml(path)
-
-        # Parse rich attributes from raw XML
-        attrs = _parse_kml_attributes(path)
-
-        if len(attrs) == len(gdf) and not attrs.empty:
-            # Attach parsed attributes by position
-            gdf = gdf.reset_index(drop=True)
-            attrs = attrs.reset_index(drop=True)
-            
-            for col in attrs.columns:
-                target_col = col
-                if col in gdf.columns:
-                    target_col = f'_kml_{col}'
-                gdf[target_col] = attrs[col]
-
-            # ── DETECTION: Is this a pincode KML or a ward KML? ──
-            is_pincode_kml = 'PINCODE' in gdf.columns
-
-            if is_pincode_kml:
-                gdf['ward_id']   = gdf['PINCODE'].astype(str).str.strip()
-                gdf['ward_name'] = gdf['PINCODE'].astype(str).str.strip()
-            else:
-                # ── WARD KML SCHEMA ──
-                # Prefer the rich 'id' from ExtendedData (attrs) if extracted
-                id_col = '_kml_id' if '_kml_id' in gdf.columns else ('id' if 'id' in gdf.columns else None)
-                if id_col:
-                    def _extract_global_id(raw_id):
-                        m = re.search(r'\.(\d+)$', str(raw_id))
-                        return int(m.group(1)) if m else None
-                    gdf['ward_id'] = gdf[id_col].apply(_extract_global_id).astype(str)
-                elif 'ward_id' in gdf.columns:
-                    gdf['ward_id'] = gdf['ward_id'].astype(str).str.strip()
-                else:
-                    gdf['ward_id'] = [f'W_{i:03d}' for i in range(len(gdf))]
-
-                if 'Ward_Name' in gdf.columns:
-                    gdf['ward_name'] = gdf['Ward_Name']
-                elif 'ward_name' in gdf.columns:
-                    gdf['ward_name'] = gdf['ward_name']
-                elif 'Name' in gdf.columns:
-                    gdf['ward_name'] = gdf['Name']
-                else:
-                    gdf['ward_name'] = gdf['ward_id']
-        else:
-            print_warning("SchemaData mismatch — using basic KML attributes.")
-            if 'Name' in gdf.columns:
-                gdf = gdf.rename(columns={'Name': 'ward_name'})
-                gdf['ward_id'] = gdf['ward_name']
-
-        # ── POST-JOIN PROCESSING ──
-        # 1. Filter out empty/invalid geometries
-        gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.notna() & gdf.geometry.is_valid].copy()
-        
-        # 2. Project/Normalization
-        gdf['ward_id'] = gdf['ward_id'].astype(str)
-        
-        # 3. Handle duplicates / multi-part polygons (CRITICAL FOR MORAN'S I weights)
-        if gdf.duplicated(subset='ward_id').sum() > 0:
-            print_warning(f"Duplicate IDs found — merging geometries (dissolve)")
-            # Aggregation: take first for names, etc.
-            gdf = gdf.dissolve(by='ward_id', aggfunc='first').reset_index()
-
-        # 4. Final display cleaning (catch-all for names)
-        def _final_clean(raw):
-            raw = str(raw).strip()
-            m = re.match(r'^\d+\s*-\s*(.+)$', raw)
-            return m.group(1).strip() if m else raw
-        if 'ward_name' in gdf.columns:
-            gdf['ward_name'] = gdf['ward_name'].apply(_final_clean)
-
-        keep_cols = ['ward_id', 'ward_name', 'zone_name', 'geometry']
-        gdf = gdf[[c for c in keep_cols if c in gdf.columns]].copy()
-
-        print_info(f"Loaded [highlight]{len(gdf)}[/highlight] {geo_label}s. "
-                   f"Sample: {gdf['ward_id'].iloc[0]} — {gdf['ward_name'].iloc[0]}")
-        return gdf
-
-
-# Legacy alias so existing imports don't break
-load_wards = load_geo_zones
-
-
-def load_bus_routes(path: str = None) -> gpd.GeoDataFrame:
-    with log_process("Loading Bus Routes"):
-        if not config.HAS_TRANSIT:
-            print_info("Transit data disabled for this city — returning empty routes.")
-            return gpd.GeoDataFrame(columns=['route_id', 'route_name', 'geometry'], crs=config.CRS_GEOGRAPHIC)
-
-        path = path or config.TRANSIT_KML
-        if path is None:
-            print_warning("No transit KML path configured.")
-            return gpd.GeoDataFrame(columns=['route_id', 'route_name', 'geometry'], crs=config.CRS_GEOGRAPHIC)
-
-        gdf = load_kml(path)
-        rename_map = {'kgisbmtcrootid': 'route_id', 'kgisbmtcrootname': 'route_name'}
-        existing_renames = {k: v for k, v in rename_map.items() if k in gdf.columns}
-        if existing_renames: gdf = gdf.rename(columns=existing_renames)
-        if 'route_id' not in gdf.columns: gdf['route_id'] = [f'R_{i:04d}' for i in range(len(gdf))]
-        else: gdf['route_id'] = gdf['route_id'].astype(str)
-        keep_cols = ['route_id', 'route_name', 'geometry']
-        gdf = gdf[[c for c in keep_cols if c in gdf.columns]].copy()
-        print_info(f"Loaded [highlight]{len(gdf)}[/highlight] routes.")
-        return gdf
-
-def load_sez(path: str = None) -> gpd.GeoDataFrame:
-    with log_process("Loading SEZ Points"):
-        if not config.HAS_SEZ:
-            print_info("SEZ data disabled for this city — returning empty SEZ set.")
-            return gpd.GeoDataFrame(columns=['geometry'], crs=config.CRS_GEOGRAPHIC)
-
-        path = path or config.SEZ_CSV
-        try:
-            df = pd.read_csv(path)
-        except FileNotFoundError:
-            print_error(f"SEZ data missing at {path}")
-            return gpd.GeoDataFrame(columns=['geometry'], crs=config.CRS_GEOGRAPHIC)
-        df['latitude']  = pd.to_numeric(df['latitude'], errors='coerce')
-        df['longitude'] = pd.to_numeric(df['longitude'], errors='coerce')
-        df = df.dropna(subset=['latitude', 'longitude'])
-        gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df['longitude'], df['latitude']), crs=config.CRS_GEOGRAPHIC)
-        print_info(f"Loaded [highlight]{len(gdf)}[/highlight] SEZ points.")
-        return gdf
-
-def validate_schema(listings_gdf, wards_gdf, routes_gdf=None, sez_gdf=None) -> None:
-    with log_process("Schema Validation"):
-        if len(listings_gdf) == 0: print_warning("Listings dataset is empty.")
-        if len(wards_gdf) == 0: print_warning(f"{config.GEO_UNIT_LABEL} dataset is empty.")
-        if config.HAS_TRANSIT and routes_gdf is not None and len(routes_gdf) == 0:
-            print_warning("Bus Routes dataset is empty.")
-        if config.HAS_SEZ and sez_gdf is not None and len(sez_gdf) == 0:
-            print_warning("SEZ dataset is empty.")
-        print_success("Schema validation complete.")
-
-
-def save_processed_wards(wards_gdf: gpd.GeoDataFrame) -> str:
-    """Save processed zone data (without geometry) to CSV for inspection."""
-    with log_process(f"Saving processed {config.GEO_UNIT_LABEL}s"):
-        os.makedirs(config.PROCESSED_DIR, exist_ok=True)
-        out = wards_gdf.drop(columns=['geometry'], errors='ignore').copy()
-        out.to_csv(config.WARDS_PROCESSED, index=False)
-        print_success(f"Processed {config.GEO_UNIT_LABEL}s → [highlight]{os.path.basename(config.WARDS_PROCESSED)}[/] ({len(out)} zones)")
-        return config.WARDS_PROCESSED
-
-
-def save_processed_transit(transit_df: pd.DataFrame) -> str:
-    """Save processed transit scores to CSV."""
-    with log_process("Saving processed transit data"):
-        os.makedirs(config.PROCESSED_DIR, exist_ok=True)
-        transit_df.to_csv(config.TRANSIT_PROCESSED, index=False)
-        print_success(f"Processed transit → [highlight]{os.path.basename(config.TRANSIT_PROCESSED)}[/] ({len(transit_df)} zones)")
-        return config.TRANSIT_PROCESSED

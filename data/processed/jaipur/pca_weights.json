@@ -1,0 +1,16 @@
+{
+  "DII": {
+    "norm_price_pressure": 0.0874,
+    "norm_sfc": 0.8253,
+    "norm_psf_diff": 0.0874
+  },
+  "SFS": {
+    "supply_volume_norm": 0.1422,
+    "size_adequacy": 0.7651,
+    "capital_efficiency_norm": 0.0927
+  },
+  "ECON": {
+    "demand_intensity_idx": 0.0942,
+    "supply_depth_idx": 0.9058
+  }
+}
