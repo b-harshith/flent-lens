@@ -426,6 +426,278 @@ st.markdown("""
         letter-spacing: 0.05em;
     }
 
+    /* ── Model Assumptions Grid ──────────────────────────────── */
+    .assumption-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px;
+        margin: 16px 0 8px 0;
+    }
+    .assumption-item {
+        background: #ffffff;
+        border: 1px solid #e1e4e8;
+        border-left: 4px solid #2e86de;
+        border-radius: 6px;
+        padding: 14px 16px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    .assumption-num {
+        background: #1b2838;
+        color: #fff;
+        min-width: 24px; height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: 800;
+        flex-shrink: 0;
+        margin-top: 1px;
+    }
+    .assumption-text {
+        font-size: 0.82rem;
+        color: #212529;
+        line-height: 1.55;
+    }
+    .assumption-text b { color: #1b2838; }
+    .assumption-kv {
+        display: inline-block;
+        background: #e9ecef;
+        color: #1b2838;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 1px 7px;
+        border-radius: 3px;
+        margin-left: 4px;
+    }
+    .assumption-section-title {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #2e86de;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+    }
+
+    /* ── Ward Card v2 ────────────────────────────────────────── */
+    .wcard {
+        background: #ffffff;
+        border: 1px solid #e1e4e8;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        font-family: 'Inter', sans-serif;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .wcard:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+    }
+    .wcard-header {
+        padding: 18px 20px 14px 20px;
+        position: relative;
+    }
+    .wcard-rank {
+        position: absolute;
+        top: 16px;
+        right: 18px;
+        width: 44px; height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #fff;
+    }
+    .wcard-eyebrow {
+        font-size: 0.62rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.55);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 3px;
+    }
+    .wcard-name {
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1.25;
+        margin-bottom: 8px;
+        padding-right: 56px;
+    }
+    .wcard-tier {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 3px;
+        font-size: 0.6rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #fff;
+    }
+    .wcard-score-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+    }
+    .wcard-score-val {
+        font-size: 2rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+    .wcard-score-label {
+        font-size: 0.6rem;
+        font-weight: 600;
+        color: rgba(255,255,255,0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        line-height: 1.3;
+    }
+    .wcard-body {
+        padding: 0 20px 16px 20px;
+    }
+    .wcard-section {
+        font-size: 0.6rem;
+        font-weight: 700;
+        color: #868e96;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 12px 0 6px 0;
+        border-bottom: 1px solid #f1f3f5;
+        margin-bottom: 6px;
+    }
+    .wcard-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+    }
+    .wcard-label { font-size: 0.82rem; color: #495057; }
+    .wcard-val { font-size: 0.88rem; font-weight: 700; color: #212529; }
+    .wcard-val-green { font-size: 0.88rem; font-weight: 800; color: #0b7a3e; }
+    .wcard-val-blue { font-size: 0.88rem; font-weight: 700; color: #2e86de; }
+    .margin-bar-wrap {
+        background: #e9ecef;
+        border-radius: 4px;
+        height: 7px;
+        margin: 3px 0 6px 0;
+        overflow: hidden;
+    }
+    .margin-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+    }
+    .wcard-qtable {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #e1e4e8;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 6px 0 2px 0;
+    }
+    .wcard-qtable th {
+        background: #f8f9fa;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #6c757d;
+        padding: 5px;
+        text-align: center;
+        border-right: 1px solid #e1e4e8;
+    }
+    .wcard-qtable td {
+        padding: 6px 3px;
+        text-align: center;
+        border-right: 1px solid #e1e4e8;
+        vertical-align: middle;
+    }
+    .wcard-qval { font-weight: 800; font-size: 0.85rem; color: #212529; display: block; }
+    .wcard-qcnt { font-size: 0.65rem; color: #adb5bd; display: block; }
+    .wcard-demand-bar {
+        background: #e9ecef;
+        border-radius: 3px;
+        height: 5px;
+        margin: 3px 0 4px 0;
+        overflow: hidden;
+    }
+    .wcard-verdict {
+        background: #f0f7ff;
+        border: 1px solid #cce4ff;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-top: 12px;
+        font-size: 0.8rem;
+        color: #1b2838;
+        line-height: 1.55;
+    }
+    .wcard-verdict b { color: #2e86de; }
+
+    /* ── Param chips row ─────────────────────────────────────── */
+    .param-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 0 0;
+    }
+    .param-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        background: #f1f3f5;
+        border: 1px solid #e1e4e8;
+        border-radius: 100px;
+        overflow: hidden;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .param-chip-label {
+        background: #1b2838;
+        color: #fff;
+        padding: 3px 9px;
+        font-size: 0.63rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 700;
+    }
+    .param-chip-val {
+        padding: 3px 10px;
+        color: #1b2838;
+    }
+
+    /* ── Footer strip ────────────────────────────────────────── */
+    .footer-strip {
+        background: #1b2838;
+        border-radius: 8px;
+        padding: 20px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 2rem;
+    }
+    .footer-left { color: #c8d6e5; font-size: 0.82rem; line-height: 1.6; }
+    .footer-left b { color: #ffffff; }
+    .footer-right { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .footer-badge {
+        display: inline-block;
+        background: #2e86de;
+        color: #ffffff;
+        padding: 6px 14px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-decoration: none;
+        letter-spacing: 0.02em;
+    }
+    .footer-tag {
+        font-size: 0.72rem;
+        color: #5a7a9a;
+    }
+
     /* ── Hide UI chrome ───────────────────────────────────────── */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -548,11 +820,43 @@ def render_chip(label, value):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# WARD CARD — uses st.columns + st.markdown for reliable rendering
+# WARD CARD v2 — redesigned for recruiter readability
 # ═══════════════════════════════════════════════════════════════════
+def _margin_health(margin):
+    """Return (color, label) for margin health bar."""
+    if margin >= 15000: return ('#0b7a3e', 'Strong')
+    if margin >= 8000:  return ('#e67700', 'Viable')
+    if margin >= 5000:  return ('#f59f00', 'Marginal')
+    return ('#c92a2a', 'Weak')
+
+def _rank_gradient(rank):
+    """Return CSS background for rank badge."""
+    return {
+        1: 'linear-gradient(135deg,#f6c90e,#e67700)',
+        2: 'linear-gradient(135deg,#adb5bd,#6c757d)',
+        3: 'linear-gradient(135deg,#cd7f32,#8b4513)',
+    }.get(rank, '#adb5bd')
+
+def _header_bg(tier):
+    """Return header background gradient per tier."""
+    return {
+        'Tier 1': 'linear-gradient(135deg,#0d2137 0%,#1b2838 60%,#0d3a5c 100%)',
+        'Tier 2': 'linear-gradient(135deg,#1a2e1a 0%,#1b2838 100%)',
+        'Tier 3': 'linear-gradient(135deg,#2e1b0f 0%,#1b2838 100%)',
+    }.get(tier, '#1b2838')
+
+def _verdict(rank, name, margin, score, tier):
+    """Generate a plain-English verdict for a ward card."""
+    if tier == 'Tier 1' and margin >= 10000:
+        return f"<b>Prime target.</b> {name} clears the viability threshold with a {inr(margin)}/mo spread — lease a 3BHK here, split into rooms, extract margin immediately."
+    if tier == 'Tier 1':
+        return f"<b>High conviction.</b> {name} ranks Tier 1 with a score of {score:.1f}. Margin is positive and supply depth is sufficient for initial roll-out."
+    if tier == 'Tier 2':
+        return f"<b>Secondary pipeline.</b> {name} presents viable economics. Suitable as a follow-on market once Tier 1 locations are occupied."
+    return f"<b>Watchlist.</b> {name} is borderline viable. Monitor supply and margin trends before committing."
+
 def render_ward_card(col, row, rank, has_transit, has_sez):
-    """Render a ward snapshot card inside a given st.column."""
-    name = str(row.get('ward_name', row.get('ward_id', '—')))
+    """Render a redesigned ward snapshot card inside a given st.column."""
     tier = row.get('tier', 'Excluded')
     score = _f(row, 'OPP_SCORE')
     margin = _f(row, 'arb_margin_best')
@@ -571,83 +875,105 @@ def render_ward_card(col, row, rank, has_transit, has_sez):
     aura = aura if aura > 0 else 1.0
     d_lbl = "High" if demand >= 0.5 else ("Mod" if demand >= 0.35 else "Low")
     d_pct = min(demand * 100, 100)
-
-    # Extract display names and IDs
     disp_name = str(row.get('ward_name', '—'))
-    disp_id = str(row.get('ward_id', '—'))
-    id_label = "Pincode" if sel == 'hyderabad' else "Ward #"
+    disp_id   = str(row.get('ward_id', '—'))
+    id_label  = "Pincode" if sel == 'hyderabad' else "Ward"
+    m_color, m_label = _margin_health(margin)
+    m_pct = min(margin / 20000 * 100, 100) if margin > 0 else 0
+    hbg = _header_bg(tier)
+    rank_bg = _rank_gradient(rank)
+    verdict_html = _verdict(rank, disp_name, margin, score, tier)
 
     with col:
-        # Header via HTML table (tables render reliably in Streamlit)
         st.markdown(f"""
-<table style="width:100%;border-collapse:collapse;background:#1b2838;border-radius:6px 6px 0 0;overflow:hidden;">
-<tr>
-<td style="padding:16px 18px;">
-  <div style="color:#868e96;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">{id_label} {disp_id}</div>
-  <div style="color:#ffffff;font-size:1.1rem;font-weight:700;margin:1px 0 6px 0;">{disp_name}</div>
-  <span style="background:{tc(tier)};color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:700;text-transform:uppercase;">{tier}</span>
-</td>
-<td style="padding:16px 18px;text-align:right;vertical-align:top;">
-  <div style="color:{tc(tier)};font-size:1.6rem;font-weight:800;line-height:1;">{score:.1f}</div>
-  <div style="color:#868e96;font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em;">Score</div>
-</td>
-</tr>
-</table>
+<div class="wcard">
+  <!-- ── HEADER ── -->
+  <div class="wcard-header" style="background:{hbg};">
+    <!-- Rank badge -->
+    <div class="wcard-rank" style="background:{rank_bg};box-shadow:0 2px 8px rgba(0,0,0,0.3);">#{rank}</div>
+    <!-- ID eyebrow -->
+    <div class="wcard-eyebrow">{id_label} {disp_id}</div>
+    <!-- Ward name -->
+    <div class="wcard-name">{disp_name}</div>
+    <!-- Tier pill -->
+    <span class="wcard-tier" style="background:{tc(tier)};">{tier}</span>
+    <!-- Score -->
+    <div class="wcard-score-row">
+      <div class="wcard-score-val" style="color:{tc(tier)};">{score:.1f}</div>
+      <div class="wcard-score-label">Opportunity<br>Score</div>
+    </div>
+  </div>
+  <!-- ── BODY ── -->
+  <div class="wcard-body">
+    <!-- Margin section -->
+    <div class="wcard-section">Arbitrage Margin · {supply} units available</div>
+    <div class="wcard-row">
+      <span class="wcard-label">Monthly Margin</span>
+      <span style="font-size:1.05rem;font-weight:900;color:{m_color};">{inr(margin)}/mo</span>
+    </div>
+    <!-- Margin health bar -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <div class="margin-bar-wrap" style="flex:1;">
+        <div class="margin-bar-fill" style="width:{m_pct}%;background:{m_color};"></div>
+      </div>
+      <span style="font-size:0.65rem;font-weight:700;color:{m_color};text-transform:uppercase;">{m_label}</span>
+    </div>
+    <div class="wcard-row">
+      <span class="wcard-label">1BHK Retail Rent</span>
+      <span class="wcard-val">{inr(rent1)}/mo</span>
+    </div>
+    <div class="wcard-row">
+      <span class="wcard-label">3BHK Lease Cost (Q1)</span>
+      <span class="wcard-val">{inr(rent3)}/mo</span>
+    </div>
+    <div class="wcard-row">
+      <span class="wcard-label">Demand Discount Applied</span>
+      <span class="wcard-val-blue">{dd:.0f}%</span>
+    </div>
+    <!-- Q1-Q4 supply depth -->
+    <div class="wcard-section">Supply Quartile Depth</div>
+    <table class="wcard-qtable">
+      <tr>
+        <th style="background:#e9f3ff;color:#2e86de;">Q1 ★</th>
+        <th>Q2</th><th>Q3</th><th style="border-right:none;">Q4</th>
+      </tr>
+      <tr>
+        <td style="background:#f0f7ff;"><span class="wcard-qval">{inrk(q1r)}</span><span class="wcard-qcnt">{q1c} units</span></td>
+        <td><span class="wcard-qval">{inrk(q2r)}</span><span class="wcard-qcnt">{q2c} units</span></td>
+        <td><span class="wcard-qval">{inrk(q3r)}</span><span class="wcard-qcnt">{q3c} units</span></td>
+        <td style="border-right:none;"><span class="wcard-qval">{inrk(q4r)}</span><span class="wcard-qcnt">{q4c} units</span></td>
+      </tr>
+    </table>
+    <div style="font-size:0.65rem;color:#868e96;margin-bottom:2px;">★ Q1 = cheapest 25% — Flent's sourcing target</div>
+    <!-- Market signals -->
+    <div class="wcard-section">Market Signals</div>
+    <div class="wcard-row">
+      <span class="wcard-label">Demand Index</span>
+      <span class="wcard-val">{demand:.2f} <span style="color:#868e96;font-weight:500;">({d_lbl})</span></span>
+    </div>
+    <div class="wcard-demand-bar"><div style="width:{d_pct}%;height:5px;background:#e67700;border-radius:3px;"></div></div>
 """, unsafe_allow_html=True)
 
-        # Body — structured as clean HTML tables (Streamlit-safe)
-        body = f"""
-<table style="width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e1e4e8;border-top:0;border-radius:0 0 6px 6px;font-family:'Inter',sans-serif;">
-<!-- Core Arbitrage -->
-<tr><td colspan="2" style="padding:12px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Core Arbitrage</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Avg Arb Margin</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#0b7a3e;">{inr(margin)}/mo</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">1BHK Retail Rent</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{inr(rent1)}/mo</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">3BHK Acq Cost</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{inr(rent3)}/mo</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Demand Discount</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#2e86de;">{dd:.0f}%</td></tr>
-<!-- Supply Depth -->
-<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Supply · {supply} units</td></tr>
-<tr><td colspan="2" style="padding:8px 18px;">
-  <table style="width:100%;border-collapse:collapse;text-align:center;border:1px solid #e1e4e8;border-radius:4px;">
-    <tr style="background:#f8f9fa;">
-      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q1</td>
-      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q2</td>
-      <td style="padding:4px;border-right:1px solid #e1e4e8;font-size:0.7rem;font-weight:700;color:#6c757d;">Q3</td>
-      <td style="padding:4px;font-size:0.7rem;font-weight:700;color:#6c757d;">Q4</td>
-    </tr>
-    <tr>
-      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q1r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q1c}u</span></td>
-      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q2r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q2c}u</span></td>
-      <td style="padding:6px 2px;border-right:1px solid #e1e4e8;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q3r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q3c}u</span></td>
-      <td style="padding:6px 2px;"><span style="font-weight:700;font-size:0.85rem;color:#212529;">{inrk(q4r)}</span><br><span style="font-size:0.65rem;color:#adb5bd;">{q4c}u</span></td>
-    </tr>
-  </table>
-</td></tr>
-<!-- Market -->
-<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Market Signals</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Demand Index</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{demand:.2f} <span style="color:#868e96;font-weight:500;">({d_lbl})</span></td></tr>
-<tr><td colspan="2" style="padding:0 18px 8px 18px;">
-  <div style="width:100%;height:5px;background:#e9ecef;border-radius:3px;"><div style="width:{d_pct}%;height:5px;background:#e67700;border-radius:3px;"></div></div>
-</td></tr>"""
-
+        extra = ""
         if has_transit:
             t_pct = min(transit * 100, 100)
-            body += f"""
-<tr><td style="padding:4px 18px;font-size:0.85rem;color:#495057;">Transit Score</td><td style="padding:4px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{transit:.2f}</td></tr>
-<tr><td colspan="2" style="padding:0 18px 8px 18px;">
-  <div style="width:100%;height:5px;background:#e9ecef;border-radius:3px;"><div style="width:{t_pct}%;height:5px;background:#2e86de;border-radius:3px;"></div></div>
-</td></tr>"""
-
+            extra += f"""
+    <div class="wcard-row"><span class="wcard-label">Transit Score</span><span class="wcard-val">{transit:.2f}</span></div>
+    <div class="wcard-demand-bar"><div style="width:{t_pct}%;height:5px;background:#2e86de;border-radius:3px;"></div></div>
+"""
         if has_sez and sez > 0:
-            body += f"""<tr><td style="padding:4px 18px;font-size:0.85rem;color:#495057;">SEZ Gravity</td><td style="padding:4px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#212529;">{sez:.2f}</td></tr>"""
-
+            extra += f"""<div class="wcard-row"><span class="wcard-label">SEZ Gravity</span><span class="wcard-val">{sez:.2f}</span></div>"""
         if aura != 1.0:
             a_str = f"+{(aura-1)*100:.0f}%" if aura > 1 else f"−{(1-aura)*100:.0f}%"
-            body += f"""
-<tr><td colspan="2" style="padding:14px 18px 4px 18px;font-size:0.65rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid #f1f3f5;">Spatial Spillover</td></tr>
-<tr><td style="padding:6px 18px;font-size:0.85rem;color:#495057;">Aura Effect</td><td style="padding:6px 18px;text-align:right;font-size:0.85rem;font-weight:700;color:#2e86de;">{a_str}</td></tr>"""
+            ac = '#0b7a3e' if aura > 1 else '#c92a2a'
+            extra += f"""<div class="wcard-row"><span class="wcard-label">Neighborhood Aura</span><span style="font-size:0.88rem;font-weight:700;color:{ac};">{a_str}</span></div>"""
 
-        body += "</table>"
-        st.markdown(body, unsafe_allow_html=True)
+        st.markdown(extra + f"""
+    <!-- Plain-English Verdict -->
+    <div class="wcard-verdict">{verdict_html}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -790,35 +1116,81 @@ if not st.session_state.tour_done:
 # HEADER
 # ═══════════════════════════════════════════════════════════════════
 st.markdown(f"""
-<table style="width:100%;border-collapse:collapse;margin-bottom:2rem;">
+<table style="width:100%;border-collapse:collapse;margin-bottom:1.5rem;background:#ffffff;border:1px solid #e1e4e8;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
 <tr>
 <!-- Blue accent bar -->
-<td style="width:4px;background:#2e86de;padding:0;"></td>
+<td style="width:5px;background:linear-gradient(180deg,#2e86de,#1b2838);padding:0;"></td>
 <!-- Left: Project identity -->
-<td style="padding:24px 28px;vertical-align:top;width:50%;">
-  <div style="font-size:0.65rem;font-weight:700;color:#2e86de;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Flent Lens</div>
-  <div style="font-size:1.7rem;font-weight:800;color:#1b2838;line-height:1.2;letter-spacing:-0.02em;margin-bottom:10px;">{prof['city_name']} Market Intelligence</div>
-  <div style="font-size:0.88rem;color:#495057;line-height:1.65;">
-    Evaluating <b>{len(df)} {prof['geo_unit_label']}s</b> across arbitrage economics, demand intensity, supply feasibility, and spatial overlays to identify optimal co-living expansion zones.
+<td style="padding:28px 32px;vertical-align:top;width:55%;">
+  <div style="font-size:0.62rem;font-weight:700;color:#2e86de;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;">🔬 Flent Lens · Co-Living Market Intelligence</div>
+  <div style="font-size:1.9rem;font-weight:900;color:#1b2838;line-height:1.15;letter-spacing:-0.03em;margin-bottom:12px;">{prof['city_name']} Rental<br>Arbitrage Analysis</div>
+  <div style="font-size:0.85rem;color:#212529;line-height:1.6;border-left:3px solid #2e86de;padding-left:14px;margin-bottom:14px;font-style:italic;">
+    Which zones combine the highest per-room arbitrage margin, convertible 3BHK+ supply, and strongest co-living demand?
+  </div>
+  <div class="param-chips">
+    <div class="param-chip"><span class="param-chip-label">Zones</span><span class="param-chip-val">{len(df)} {prof['geo_unit_label']}s</span></div>
+    <div class="param-chip"><span class="param-chip-label">Revenue DDF</span><span class="param-chip-val">0.80×</span></div>
+    <div class="param-chip"><span class="param-chip-label">Min Margin</span><span class="param-chip-val">₹5,000/mo</span></div>
+    <div class="param-chip"><span class="param-chip-label">Sourcing</span><span class="param-chip-val">Q1 (25th pctl)</span></div>
   </div>
 </td>
-<!-- Right: Research Q + Team -->
-<td style="padding:24px 28px;vertical-align:top;border-left:1px solid #e1e4e8;">
-  <div style="font-size:0.62rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Research Question</div>
-  <div style="font-size:0.82rem;color:#212529;line-height:1.55;font-style:italic;margin-bottom:14px;border-left:2px solid #2e86de;padding-left:12px;">
-    Which areas offer the most favourable combination of per-room arbitrage margin, convertible 3BHK+ supply, and demand for shared living?
+<!-- Right: Team + context -->
+<td style="padding:28px 32px;vertical-align:top;border-left:1px solid #e1e4e8;background:#fafbfc;">
+  <div style="font-size:0.6rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Model</div>
+  <div style="font-size:0.82rem;color:#212529;line-height:1.65;margin-bottom:16px;">
+    Lease 3BHK+ units at <b>wholesale Q1 rates</b>, split into premium rooms,
+    price each room at <b>80% of median 1BHK rent</b>. Pipeline scores
+    {len(df)} zones across economics, demand, supply, and spatial overlays.
   </div>
-  <div style="font-size:0.62rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Team</div>
+  <div style="font-size:0.6rem;font-weight:700;color:#868e96;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Team · BBA Python Analytics · April 2026</div>
   <div style="font-size:0.78rem;color:#495057;line-height:1.7;">
     Harshith Bejjanki <span style="color:#adb5bd;">047</span> · Suneeth Boorgula <span style="color:#adb5bd;">016</span> · Sudhiksha <span style="color:#adb5bd;">033</span><br>
     Peddi Sudeeksha <span style="color:#adb5bd;">027</span> · Vedanth Nagaarur <span style="color:#adb5bd;">019</span>
   </div>
-  <div style="font-size:0.68rem;color:#adb5bd;margin-top:6px;">BBA · Python Analytics · April 2026</div>
 </td>
 </tr>
 </table>
 """, unsafe_allow_html=True)
 
+
+# ═══════════════════════════════════════════════════════════════════
+# MODEL ASSUMPTIONS (always-visible, collapsed by default)
+# ═══════════════════════════════════════════════════════════════════
+with st.expander("📐 Model Assumptions — 7 rules this pipeline is built on", expanded=False):
+    st.markdown("""
+<div class="assumption-section-title">Core Business Rules</div>
+<div class="assumption-grid">
+  <div class="assumption-item">
+    <div class="assumption-num">1</div>
+    <div class="assumption-text"><b>Rental Arbitrage Only</b> — Flent does not buy properties. It leases large 3BHK+ units and converts them into premium co-living rooms.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">2</div>
+    <div class="assumption-text"><b>Wholesale Sourcing at Q1</b> — Acquisition price is anchored to the <span class="assumption-kv">25th percentile</span> of market rent, reflecting Flent's ability to negotiate distressed or bulk inventory.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">3</div>
+    <div class="assumption-text"><b>Dynamic Demand Discount Factor</b> — Per-room revenue uses a <span class="assumption-kv">base DDF of 0.80</span> (rooms priced at 80% of median 1BHK rent), but this is <b>not static</b>. A ±10% ward-level elastic band adjusts the discount based on local price pressure — high-demand wards retain closer to 0.90×, low-demand wards compress to 0.70×. Rooms always undercut a solo 1BHK to remain the better value proposition.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">4</div>
+    <div class="assumption-text"><b>Dynamic Yield by Size</b> — Room count depends on sqft: <span class="assumption-kv">3 rooms</span> for standard 3BHK, up to <span class="assumption-kv">5 rooms</span> for 4BHK ≥2,200 sqft.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">5</div>
+    <div class="assumption-text"><b>Viability Threshold</b> — A zone qualifies only if it yields arbitrage margin <span class="assumption-kv">&gt;₹5,000/mo</span> and has a supply depth of <span class="assumption-kv">&gt;3 listings</span>.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">6</div>
+    <div class="assumption-text"><b>Spatial Spillover (Aura Effect)</b> — Wards adjacent to Tier 1 clusters receive a <span class="assumption-kv">+10% score boost</span>. Isolated high-performing wards receive a <span class="assumption-kv">−15% penalty</span>.</div>
+  </div>
+  <div class="assumption-item">
+    <div class="assumption-num">7</div>
+    <div class="assumption-text"><b>Transit as a Penalty</b> — High bus density is weighted <span class="assumption-kv">−0.10</span> to account for noise, congestion, and the premium positioning of Flent properties.</div>
+  </div>
+</div>
+<div style="font-size:0.75rem;color:#868e96;margin-top:10px;">⚠ Limitations: single data source (Magicbricks), no time-series, no capex modelling, static DDF. See README for full caveats.</div>
+""", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════
 # KPIs
@@ -831,22 +1203,36 @@ listing_cols = [c for c in df.columns if c.startswith('cnt_')]
 total_listings = int(df[listing_cols].sum().sum()) if listing_cols else 0
 
 k1, k2, lk, k3, k4, k5 = st.columns(6)
-k1.metric("Zones", len(df))
-k2.metric("Tier 1", tc_map.get('Tier 1', 0))
-lk.metric("Listings", f"{total_listings:,}")
-k3.metric("Viable", viable)
+k1.metric("Zones Evaluated", len(df))
+k2.metric("Tier 1 Targets", tc_map.get('Tier 1', 0))
+lk.metric("Total Listings", f"{total_listings:,}")
+k3.metric("Viable Zones", viable)
 k4.metric("Peak Margin", inr(peak))
-k5.metric("Mean Score", f"{df['OPP_SCORE'].mean():.1f}")
+k5.metric("Mean Opp Score", f"{df['OPP_SCORE'].mean():.1f}")
 
 
 # ═══════════════════════════════════════════════════════════════════
 # TOP 3 WARD CARDS
 # ═══════════════════════════════════════════════════════════════════
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.markdown("## Priority Investment Targets")
-st.markdown("The three highest-scoring zones, with full economic profile mirroring the Google Earth atlas cards.")
+st.markdown("## Priority Investment Targets — Tier 1")
+st.markdown("""
+<div style="font-size:0.88rem;color:#495057;margin-bottom:1rem;line-height:1.6;">
+  Top 3 <b>Tier 1</b> zones (≥75th percentile of viable zones), ranked by composite Opportunity Score.
+  Each card mirrors the Google Earth KML atlas popup — arbitrage margin, supply quartile depth, demand index, and a plain-English verdict.
+  <b>Q1 (cheapest 25% of inventory)</b> is Flent's sourcing bracket.
+</div>
+""", unsafe_allow_html=True)
 
-top3 = df.nlargest(3, 'OPP_SCORE')
+# Pull from Tier 1 only; pad with Tier 2 if city has fewer than 3 Tier 1 zones
+_tier1 = df[df['tier'] == 'Tier 1'].nlargest(3, 'OPP_SCORE')
+if len(_tier1) < 3:
+    _needed = 3 - len(_tier1)
+    _tier2_pad = df[df['tier'] == 'Tier 2'].nlargest(_needed, 'OPP_SCORE')
+    top3 = pd.concat([_tier1, _tier2_pad])
+else:
+    top3 = _tier1
+
 cols = st.columns(3, gap="medium")
 for idx, (_, row) in enumerate(top3.iterrows()):
     render_ward_card(cols[idx], row, idx + 1, prof['has_transit'], prof['has_sez'])
@@ -1082,4 +1468,16 @@ with tab4:
 # FOOTER
 # ═══════════════════════════════════════════════════════════════════
 st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
-st.caption(f"Flent Lens · {prof['city_name']} · {len(df)} zones · Generated from pipeline output")
+st.markdown(f"""
+<div class="footer-strip">
+  <div class="footer-left">
+    <b>Flent Lens</b> — Rental Arbitrage Intelligence Platform<br>
+    {prof['city_name']} · {len(df)} zones analysed · Pipeline output · April 2026<br>
+    <span style="font-size:0.75rem;color:#5a7a9a;">Built by Harshith Bejjanki &amp; team · BBA Python Analytics</span>
+  </div>
+  <div class="footer-right">
+    <span class="footer-tag">Stack: Python · GeoPandas · Statsmodels · Streamlit · Plotly</span>
+    <a class="footer-badge" href="https://github.com/b-harshith/flent-lens" target="_blank">GitHub ↗</a>
+  </div>
+</div>
+""", unsafe_allow_html=True)

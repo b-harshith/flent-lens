@@ -19,7 +19,7 @@ The Flent Lens analytical model is built upon the following core business and sp
 >
 > **2. Wholesale Sourcing (Q1)**: Acquisition pricing is anchored to the **25th percentile (Q1)** of market rent, reflecting Flent's ability to negotiate for distressed or bulk inventory.
 >
-> **3. Retail Revenue Anchor**: Per-room revenue is capped at **80% of the ward median 1BHK rent** (0.80 Demand Discount Factor). This ensures rooms are always a better value proposition than standalone apartments.
+> **3. Dynamic Demand Discount Factor (DDF)**: Per-room revenue uses a **base DDF of 0.80** (80% of the ward median 1BHK rent), but this is **not a fixed cap**. A ±10% ward-level elastic band adjusts the discount based on local price pressure — high-demand wards compress to ~0.90×, low-demand wards drop to ~0.70×. Rooms must always be a better value proposition than a standalone apartment.
 >
 > **4. Space Optimization (Dynamic Yield)**: The number of revenue rooms depends on the total square footage (e.g., 3 rooms for standard 3BHKs, 4 rooms for XL units ≥2,000 sqft).
 >
@@ -37,7 +37,7 @@ The Flent Lens analytical model is built upon the following core business and sp
 * No time-series — Rent trends and vacancy rates are not captured.
 * Transit = bus only — Metro and suburban rail are not modelled.
 * Ward centroid simplification — SEZ distances are measured from ward centroids, not boundaries.
-* Static demand discount — The 0.80 DDF is assumed uniform (with ±10% local elastic band), but actual co-living pricing may vary by property, furnishing quality, and brand positioning.
+* Demand discount floor — While the base DDF of 0.80 is dynamically adjusted per ward (±10% elastic band), actual co-living pricing may vary further by property condition, furnishing quality, and brand positioning, which the model does not capture.
 * No capex modelling — Furnishing costs, security deposits, and setup capital are not included in the margin calculation.
 
 ---
