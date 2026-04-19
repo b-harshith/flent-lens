@@ -471,7 +471,7 @@ Install: `pip install h3 osmnx spreg libpysal esda openpyxl rich`
 | Peddi Sudeeksha | SM24UBBA027 |
 | Vedanth Nagaarur | SM24UBBA019 |
 
-**Academic Context:** BBA Capstone Project — Real Estate Market Analytics
+**Academic Context:** BBA Python Project — Real Estate Market Analytics
 
 ---
 
