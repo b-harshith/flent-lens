@@ -421,6 +421,29 @@ All parameters live in `config.py`. Key ones:
 
 ---
 
+## Future Expansion & Strategic Roadmap
+
+Flent Lens is pivoting from a single-city investment tool into a multi-city co-living expansion intelligence platform. 
+
+### 1. The Cross-City Answer
+We are developing the **City Attractiveness Index (CAI)**, a weighted model to identify the next priority city for Flent's expansion. The CAI scores cities across 6 dimensions:
+- **Demand (25%)**: Price pressure, IT workforce, rent growth.
+- **Margin (25%)**: Median arbitrage margin and structural efficiency (OLS).
+- **Supply (15%)**: Viable zone availability.
+- **Spatial (10%)**: Spatial clustering (Moran's I).
+- **Macro (15%)** & **Risk (10%)**: Co-living market maturity, competition, and data depth.
+
+Primary candidate expansion cities include **Pune, Chennai, Mumbai, and Gurgaon**.
+
+### 2. Upgraded Granular Intra-City Analysis
+Moving forward, the pipeline and dashboard will be expanded with a **two-mode architecture** (Cross-City Overview Mode & Single-City Deep Dive Mode). New modules being integrated:
+*   **Metro Proximity Overlay**: Unlike buses, metro stations act as strong positive premium demand signals in cities like Mumbai and Pune.
+*   **Co-working Density**: A spatial proxy for mobile-professional demand.
+*   **Zone Drill-Down Engine**: Click any zone on the dashboard to view the full waterfall arbitrage math, a listing-level scatter map, and an auto-generated narrative verdict.
+*   **Cross-City Comparator**: Apples-to-apples financial comparison and margin distributions across cities via an aggregated `city_summary.json` pipeline tracking artifact.
+
+---
+
 ## Tech Stack
 
 | Library | Role |
